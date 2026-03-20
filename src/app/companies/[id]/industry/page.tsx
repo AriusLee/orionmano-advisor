@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { GenerateReportDialog } from '@/components/reports/generate-report-dialog';
 import { SectionPreview } from '@/components/reports/section-preview';
+import { IndustryCharts } from '@/components/reports/module-charts';
 import { UploadZone } from '@/components/documents/upload-zone';
 import { useCompanyStore } from '@/stores/company-store';
 
@@ -173,6 +174,8 @@ export default function IndustryPage({ params }: { params: Promise<{ id: string 
               )}
             </CardContent>
           </Card>
+
+          <IndustryCharts />
 
           <SectionPreview
             companyId={id}
