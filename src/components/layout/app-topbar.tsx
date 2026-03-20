@@ -1,0 +1,59 @@
+'use client';
+
+import { useState, useEffect } from 'react';
+import { Menu, LogOut, User } from 'lucide-react';
+import { useAuth } from '@/lib/auth-context';
+import { Button } from '@/components/ui/button';
+import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+
+interface AppTopbarProps {
+  onMenuClick: () => void;
+}
+
+export function AppTopbar({ onMenuClick }: AppTopbarProps) {
+  const { user, logout } = useAuth();
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => { setMounted(true); }, []);
+
+  const initials = user?.name
+    ? user.name.split(' ').map((n) => n[0]).join('').toUpperCase().slice(0, 2)
+    : 'U';
+
+  return (
+    <header className="flex h-14 items-center gap-4 border-b bg-card px-4 lg:px-6">
+      <Button variant="ghost" size="icon" className="lg:hidden cursor-pointer" onClick={onMenuClick}>
+        <Menu className="h-5 w-5" />
+      </Button>
+
+      <div className="flex-1" />
+
+      {mounted && (
+        <Popover>
+          <PopoverTrigger className="relative flex h-8 w-8 items-center justify-center rounded-full cursor-pointer hover:bg-muted transition-colors">
+            <Avatar className="h-8 w-8">
+              <AvatarFallback className="bg-primary text-primary-foreground text-xs">
+                {initials}
+              </AvatarFallback>
+            </Avatar>
+          </PopoverTrigger>
+          <PopoverContent align="end" className="w-56 p-1">
+            <div className="px-3 py-2">
+              <p className="text-sm font-medium">{user?.name || 'User'}</p>
+              <p className="text-xs text-muted-foreground">{user?.email}</p>
+            </div>
+            <div className="my-1 h-px bg-border" />
+            <button disabled className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm text-muted-foreground cursor-not-allowed">
+              <User className="h-4 w-4" /> Profile
+            </button>
+            <div className="my-1 h-px bg-border" />
+            <button onClick={logout} className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm text-destructive hover:bg-accent/50 transition-colors cursor-pointer">
+              <LogOut className="h-4 w-4" /> Sign Out
+            </button>
+          </PopoverContent>
+        </Popover>
+      )}
+    </header>
+  );
+}
