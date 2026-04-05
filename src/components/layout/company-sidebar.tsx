@@ -8,6 +8,7 @@ import {
   Upload,
   FileText,
   Globe,
+  ClipboardCheck,
   FileSearch,
   BarChart3,
   FileBarChart,
@@ -44,6 +45,7 @@ function getNavSections(companyId: string): NavSection[] {
     {
       title: 'Advisory Modules',
       items: [
+        { label: 'Gap Analysis', href: `${base}/gap-analysis`, icon: ClipboardCheck },
         { label: 'Industry Expert', href: `${base}/industry`, icon: Globe },
         { label: 'Due Diligence', href: `${base}/dd`, icon: FileSearch },
         { label: 'Valuation', href: `${base}/valuation`, icon: BarChart3 },

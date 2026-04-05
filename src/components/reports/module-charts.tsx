@@ -10,6 +10,134 @@ import {
 const COLORS = ['oklch(0.75 0.15 175)', 'oklch(0.65 0.15 250)', 'oklch(0.70 0.12 140)', 'oklch(0.60 0.18 300)', 'oklch(0.55 0.15 260)', 'oklch(0.70 0.15 50)'];
 const TT = { background: 'oklch(0.20 0.014 260)', border: '1px solid oklch(0.30 0.014 260)', borderRadius: 8, fontSize: 12 };
 
+// ============ GAP ANALYSIS ============
+
+const NASDAQ_READINESS = [
+  { metric: 'Shareholders\' Equity', score: 26, threshold: 100 },
+  { metric: 'Net Income', score: 95, threshold: 100 },
+  { metric: 'Revenue', score: 70, threshold: 100 },
+  { metric: 'Operating History', score: 100, threshold: 100 },
+  { metric: 'Public Float', score: 0, threshold: 100 },
+];
+
+const GAP_CATEGORIES = [
+  { category: 'Financial', gaps: 3, critical: 1, label: '3 gaps (1 critical)' },
+  { category: 'Governance', gaps: 3, critical: 0, label: '3 gaps' },
+  { category: 'Reporting', gaps: 2, critical: 0, label: '2 gaps' },
+  { category: 'Industry', gaps: 2, critical: 1, label: '2 gaps (1 critical)' },
+];
+
+const FINANCIAL_SNAPSHOT = [
+  { name: 'Equity', value: 1.31, required: 5.0 },
+  { name: 'Net Income', value: 0.95, required: 0.75 },
+  { name: 'Cash', value: 0.23, required: 1.35 },
+];
+
+const READINESS_RADAR = [
+  { area: 'Financial Standards', score: 40 },
+  { area: 'Governance', score: 20 },
+  { area: 'Reporting & Disclosure', score: 15 },
+  { area: 'Internal Controls', score: 30 },
+  { area: 'Industry Position', score: 65 },
+  { area: 'Operating History', score: 90 },
+];
+
+export function GapAnalysisCharts() {
+  return (
+    <div className="grid gap-4 md:grid-cols-2">
+      <Card>
+        <CardHeader className="pb-2"><CardTitle className="text-sm font-medium">IPO Readiness Radar</CardTitle></CardHeader>
+        <CardContent>
+          <div className="h-56">
+            <ResponsiveContainer width="100%" height="100%">
+              <RadarChart data={READINESS_RADAR} cx="50%" cy="50%" outerRadius="70%">
+                <PolarGrid stroke="oklch(0.30 0.014 260)" />
+                <PolarAngleAxis dataKey="area" tick={{ fontSize: 9, fill: 'oklch(0.65 0.01 260)' }} />
+                <PolarRadiusAxis angle={30} domain={[0, 100]} tick={false} axisLine={false} />
+                <Radar name="Readiness" dataKey="score" stroke={COLORS[0]} fill={COLORS[0]} fillOpacity={0.3} />
+              </RadarChart>
+            </ResponsiveContainer>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="pb-2"><CardTitle className="text-sm font-medium">Nasdaq Financial Thresholds</CardTitle></CardHeader>
+        <CardContent>
+          <div className="space-y-3">
+            {NASDAQ_READINESS.map((r) => {
+              const pct = Math.min(r.score, 100);
+              const status = r.score >= 100 ? 'pass' : r.score >= 75 ? 'caution' : r.score > 0 ? 'fail' : 'missing';
+              const color = status === 'pass' ? COLORS[0] : status === 'caution' ? 'oklch(0.70 0.15 85)' : status === 'fail' ? 'oklch(0.65 0.18 25)' : 'oklch(0.40 0.01 260)';
+              const label = status === 'pass' ? '✅' : status === 'caution' ? '⚠️' : status === 'fail' ? '❌' : '❓';
+              return (
+                <div key={r.metric}>
+                  <div className="flex justify-between text-xs mb-1">
+                    <span className="text-muted-foreground">{r.metric}</span>
+                    <span style={{ color }}>{label} {r.score}%</span>
+                  </div>
+                  <div className="h-2 rounded-full bg-muted overflow-hidden">
+                    <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, background: color }} />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="pb-2"><CardTitle className="text-sm font-medium">Gaps by Category</CardTitle></CardHeader>
+        <CardContent>
+          <div className="h-48">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={GAP_CATEGORIES} layout="vertical">
+                <CartesianGrid strokeDasharray="3 3" stroke="oklch(0.30 0.014 260)" horizontal={false} />
+                <XAxis type="number" domain={[0, 5]} tick={{ fontSize: 10, fill: 'oklch(0.65 0.01 260)' }} axisLine={false} tickLine={false} />
+                <YAxis type="category" dataKey="category" width={80} tick={{ fontSize: 10, fill: 'oklch(0.65 0.01 260)' }} axisLine={false} tickLine={false} />
+                {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+                <Tooltip contentStyle={TT} formatter={(_: any, __: any, entry: any) => entry.payload.label} />
+                <Bar dataKey="gaps" radius={[0, 4, 4, 0]} name="Gaps">
+                  {GAP_CATEGORIES.map((entry, i) => (
+                    <Cell key={i} fill={entry.critical > 0 ? 'oklch(0.65 0.18 25)' : COLORS[0]} />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="pb-2"><CardTitle className="text-sm font-medium">Financial vs Nasdaq Requirements (USD M)</CardTitle></CardHeader>
+        <CardContent>
+          <div className="h-48">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={FINANCIAL_SNAPSHOT}>
+                <CartesianGrid strokeDasharray="3 3" stroke="oklch(0.30 0.014 260)" />
+                <XAxis dataKey="name" tick={{ fontSize: 10, fill: 'oklch(0.65 0.01 260)' }} axisLine={false} tickLine={false} />
+                <YAxis tick={{ fontSize: 10, fill: 'oklch(0.65 0.01 260)' }} axisLine={false} tickLine={false} unit="M" />
+                {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
+                <Tooltip contentStyle={TT} formatter={(v: any) => `$${Number(v).toFixed(2)}M`} />
+                <Bar dataKey="value" fill={COLORS[0]} radius={[4, 4, 0, 0]} name="Current" />
+                <Bar dataKey="required" fill="oklch(0.40 0.01 260)" radius={[4, 4, 0, 0]} name="Required" />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+          <div className="flex justify-center gap-4 mt-1">
+            <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
+              <span className="h-2 w-2 rounded-full shrink-0" style={{ background: COLORS[0] }} />Current
+            </div>
+            <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
+              <span className="h-2 w-2 rounded-full shrink-0" style={{ background: 'oklch(0.40 0.01 260)' }} />Nasdaq Threshold
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
 // ============ INDUSTRY EXPERT ============
 
 const MARKET_SIZE = [
