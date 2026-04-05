@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Presentation, BookOpen, Users, Download, Eye, Loader2, X } from 'lucide-react';
 import { toast } from 'sonner';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:2050/api/v1';
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3030/api/v1';
 
 const DECK_TYPES = [
   {

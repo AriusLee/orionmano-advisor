@@ -11,7 +11,7 @@ import { apiJson } from '@/lib/api';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:2050/api/v1';
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3030/api/v1';
 
 const EXAMPLE_PROMPTS = [
   'What are the key risks for this company?',
