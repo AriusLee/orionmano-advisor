@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { GenerateReportDialog } from '@/components/reports/generate-report-dialog';
 import { SectionPreview } from '@/components/reports/section-preview';
-import { GapAnalysisCharts } from '@/components/reports/module-charts';
+import { GapAnalysisDashboard } from '@/components/reports/gap-analysis-dashboard';
 import { UploadZone } from '@/components/documents/upload-zone';
 import { useCompanyStore } from '@/stores/company-store';
 
@@ -20,15 +20,21 @@ interface Document {
 }
 
 const GAP_ANALYSIS_SECTIONS = [
+  'Assumptions & Listing Path',
+  'FPI Status & Reporting Regime',
   'Nasdaq Listing Requirements — Financial Standards',
   'Financial Analysis — Financial Highlights',
   'Financial Analysis — Other Metrics',
-  'Industry Considerations',
+  'Financial Bridge to Listing Threshold',
+  'Entity Structure & Cap Table Assessment',
+  'Audit & Accounting Readiness',
   'Financial Gaps & Recommendations',
   'Governance Gaps & Recommendations',
   'Reporting & Disclosure Gaps',
+  'Legal & Regulatory Compliance Map',
   'Industry-Specific Gaps',
-  'Conclusion & Priority Actions',
+  'Transaction Feasibility & Peer Positioning',
+  'Conclusion & Readiness Assessment',
 ];
 
 const SUGGESTED_FILES = [
@@ -138,7 +144,7 @@ export default function GapAnalysisPage({ params }: { params: Promise<{ id: stri
             </CardContent>
           </Card>
 
-          <GapAnalysisCharts />
+          <GapAnalysisDashboard companyId={id} />
 
           <SectionPreview
             companyId={id}
