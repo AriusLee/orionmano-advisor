@@ -20,6 +20,7 @@ interface ReportItem {
   status: string;
   created_at: string;
   tier?: string;
+  progress_message?: string | null;
 }
 
 const REPORT_TYPE_LABELS: Record<string, string> = {
@@ -178,9 +179,13 @@ export function ReportPanel({ companyId }: ReportPanelProps) {
                         {statusCfg.label}
                       </span>
                     </div>
-                    <p className="text-xs text-muted-foreground/70 mt-0.5">
-                      {new Date(report.created_at).toLocaleDateString('en-MY', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
-                    </p>
+                    {isGenerating && report.progress_message ? (
+                      <p className="text-xs text-blue-400 mt-0.5 truncate">{report.progress_message}</p>
+                    ) : (
+                      <p className="text-xs text-muted-foreground/70 mt-0.5">
+                        {new Date(report.created_at).toLocaleDateString('en-MY', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                      </p>
+                    )}
                   </div>
                   {!isGenerating && <ChevronRight className="h-4 w-4 text-muted-foreground/40 mt-1 opacity-0 group-hover:opacity-100 transition-opacity" />}
                 </button>
