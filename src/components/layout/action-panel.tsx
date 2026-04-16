@@ -20,7 +20,7 @@ import {
 import { useRouter } from 'next/navigation';
 import { Badge } from '@/components/ui/badge';
 import { useCompanyStore } from '@/stores/company-store';
-import { UploadZone } from '@/components/documents/upload-zone';
+import { DocumentChecklist } from '@/components/documents/document-checklist';
 import { apiJson } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -45,6 +45,7 @@ interface DocumentItem {
   filename: string;
   extraction_status: string;
   extracted_data: Record<string, unknown> | null;
+  category?: string | null;
 }
 
 type ReportType = 'gap_analysis' | 'industry_report' | 'dd_report' | 'valuation_report';
@@ -79,13 +80,6 @@ const STATUS_CONFIG: Record<string, { color: string; label: string; animate?: bo
   approved:   { color: 'bg-emerald-500', label: 'Approved' },
   failed:     { color: 'bg-red-500',     label: 'Failed' },
 };
-
-const SUGGESTED_FILES = [
-  'Corporate proposal / company profile',
-  'Audited financial statements (2 years)',
-  'Current management reports (balance sheet & P&L)',
-  'Shareholder structure & cap table',
-];
 
 const HEADER_H = 'h-10';
 const FOOTER_H = 'h-16';
@@ -400,14 +394,13 @@ export function ActionPanel({ companyId }: ActionPanelProps) {
           </div>
         )}
 
-        {/* Documents tab */}
+        {/* Documents tab — auto-classifying checklist */}
         {activeTab === 'documents' && (
-          <div className="p-4 h-full overflow-y-auto">
-            <UploadZone
+          <div className="p-3 h-full overflow-y-auto">
+            <DocumentChecklist
               companyId={companyId}
-              suggestedFiles={SUGGESTED_FILES}
               documents={docs}
-              onUploaded={loadDocs}
+              onChanged={loadDocs}
             />
           </div>
         )}

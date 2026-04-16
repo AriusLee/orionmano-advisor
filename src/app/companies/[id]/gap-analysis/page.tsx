@@ -4,6 +4,7 @@ import { use, useEffect, useState, useCallback } from 'react';
 import { ClipboardCheck, Loader2 } from 'lucide-react';
 import { apiJson } from '@/lib/api';
 import { GapAnalysisDashboard } from '@/components/reports/gap-analysis-dashboard';
+import { EmptyDataState } from '@/components/empty-data-state';
 import { useCompanyStore } from '@/stores/company-store';
 
 interface Document {
@@ -11,7 +12,23 @@ interface Document {
   filename: string;
   extraction_status: string;
   extracted_data: Record<string, unknown> | null;
+  category?: string | null;
 }
+
+const REQUIRED_DOCS = [
+  'management_accounts',
+  'cap_table',
+  'company_profile',
+];
+
+const RECOMMENDED_DOCS = [
+  'audit_report',
+  'org_chart',
+  'tax_return',
+  'projections',
+  'shareholder_agreement',
+  'board_minutes',
+];
 
 export default function GapAnalysisPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
@@ -52,15 +69,15 @@ export default function GapAnalysisPage({ params }: { params: Promise<{ id: stri
       </div>
 
       {!isReady ? (
-        <div className="flex flex-col items-center justify-center px-6 py-20 text-center">
-          <div className="flex h-16 w-16 items-center justify-center rounded-full bg-muted mb-4">
-            <ClipboardCheck className="h-8 w-8 text-muted-foreground" />
-          </div>
-          <p className="text-sm font-medium mb-1">No Documents Yet</p>
-          <p className="text-xs text-muted-foreground leading-relaxed max-w-sm">
-            Upload company documents in the Documents tab to get started. The AI will extract data and generate a gap analysis.
-          </p>
-        </div>
+        <EmptyDataState
+          icon={ClipboardCheck}
+          title="Gap Analysis"
+          tagline="Awaiting Documents"
+          description="Upload the minimum set of corporate and financial documents — we'll auto-classify them and unlock your IPO readiness assessment. Missing items on the recommended list become findings."
+          requiredCategories={REQUIRED_DOCS}
+          recommendedCategories={RECOMMENDED_DOCS}
+          documents={docs}
+        />
       ) : (
         <GapAnalysisDashboard companyId={id} />
       )}

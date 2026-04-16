@@ -10,6 +10,7 @@ import { GenerateReportDialog } from '@/components/reports/generate-report-dialo
 import { SectionPreview } from '@/components/reports/section-preview';
 import { IndustryCharts } from '@/components/reports/module-charts';
 import { UploadZone } from '@/components/documents/upload-zone';
+import { EmptyDataState } from '@/components/empty-data-state';
 import { useCompanyStore } from '@/stores/company-store';
 
 interface Document {
@@ -17,7 +18,18 @@ interface Document {
   filename: string;
   extraction_status: string;
   extracted_data: Record<string, unknown> | null;
+  category?: string | null;
 }
+
+const REQUIRED_DOCS = [
+  'company_profile',
+  'management_accounts',
+];
+
+const RECOMMENDED_DOCS = [
+  'material_contract',
+  'projections',
+];
 
 interface Company {
   id: string;
@@ -116,24 +128,17 @@ export default function IndustryPage({ params }: { params: Promise<{ id: string 
         </div>
       </div>
 
-      {/* Upload zone — always visible when not ready */}
+      {/* Empty state — polished onboarding view with auto-checklist */}
       {!isReady && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Upload Company Materials</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-sm text-muted-foreground mb-4">
-              Upload company documents and AI will auto-extract industry and business data to power the analysis.
-            </p>
-            <UploadZone
-              companyId={id}
-              suggestedFiles={SUGGESTED_FILES}
-              documents={docs}
-              onUploaded={loadData}
-            />
-          </CardContent>
-        </Card>
+        <EmptyDataState
+          icon={Globe}
+          title="Industry Expert Analysis"
+          tagline="Awaiting Documents"
+          description="Upload company context so our market research agent can position you against the right peers, segments, and growth drivers."
+          requiredCategories={REQUIRED_DOCS}
+          recommendedCategories={RECOMMENDED_DOCS}
+          documents={docs}
+        />
       )}
 
       {/* Ready state */}
