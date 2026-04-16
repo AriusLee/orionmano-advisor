@@ -1,7 +1,7 @@
 'use client';
 
-import { use, useEffect, useState, useCallback } from 'react';
-import { apiJson } from '@/lib/api';
+import { use, useEffect, useRef, useState, useCallback } from 'react';
+import { apiFetch, apiJson } from '@/lib/api';
 import { useAuth } from '@/lib/auth-context';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -9,9 +9,10 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
-import { Save, Loader2, UserPlus, Trash2, Building2, Users, Zap, Star, Crown, Check } from 'lucide-react';
+import { Save, Loader2, UserPlus, Trash2, Building2, Users, Zap, Star, Crown, Check, ImagePlus } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
+import { CompanyLogo } from '@/components/company-logo';
 
 interface Company {
   id: string;
@@ -27,6 +28,7 @@ interface Company {
   engagement_type: string | null;
   target_exchange: string | null;
   report_tier: string;
+  logo_url?: string | null;
 }
 
 interface Member {
@@ -84,6 +86,8 @@ export default function SettingsPage({ params }: { params: Promise<{ id: string 
   const [inviteEmail, setInviteEmail] = useState('');
   const [inviteRole, setInviteRole] = useState('client');
   const [inviting, setInviting] = useState(false);
+  const [uploadingLogo, setUploadingLogo] = useState(false);
+  const logoInputRef = useRef<HTMLInputElement>(null);
 
   const loadData = useCallback(() => {
     apiJson<Company>(`/companies/${id}`)
@@ -129,6 +133,37 @@ export default function SettingsPage({ params }: { params: Promise<{ id: string 
     setInviting(false);
   };
 
+  const handleLogoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      toast.error('Please choose an image file');
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error('Image must be 5 MB or smaller');
+      return;
+    }
+    setUploadingLogo(true);
+    try {
+      const data = new FormData();
+      data.append('file', file);
+      const res = await apiFetch(`/companies/${id}/logo`, {
+        method: 'POST',
+        body: data,
+      });
+      const updated: Company = await res.json();
+      setCompany(updated);
+      setForm((prev) => ({ ...prev, logo_url: updated.logo_url }));
+      toast.success('Logo updated');
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : 'Logo upload failed');
+    } finally {
+      setUploadingLogo(false);
+    }
+  };
+
   const handleRemoveMember = (memberId: string) => {
     if (memberId === user?.id) {
       toast.error("You can't remove yourself");
@@ -151,6 +186,44 @@ export default function SettingsPage({ params }: { params: Promise<{ id: string 
   return (
     <div className="space-y-6">
       <h1 className="text-2xl font-semibold tracking-tight">Settings</h1>
+
+      {/* Logo */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-base">
+            <ImagePlus className="h-5 w-5" /> Company Logo
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="flex items-center gap-5">
+            <CompanyLogo name={company.name} logoUrl={company.logo_url} size="lg" />
+            <div className="flex-1 space-y-2">
+              <p className="text-sm text-muted-foreground">
+                PNG, JPG, WebP, or SVG up to 5 MB. Replaces the auto-fetched logo.
+              </p>
+              <div className="flex items-center gap-2">
+                <input
+                  ref={logoInputRef}
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp,image/svg+xml,image/gif"
+                  onChange={handleLogoChange}
+                  className="hidden"
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="cursor-pointer gap-2"
+                  disabled={uploadingLogo}
+                  onClick={() => logoInputRef.current?.click()}
+                >
+                  {uploadingLogo ? <Loader2 className="h-4 w-4 animate-spin" /> : <ImagePlus className="h-4 w-4" />}
+                  {uploadingLogo ? 'Uploading...' : company.logo_url ? 'Replace Logo' : 'Upload Logo'}
+                </Button>
+              </div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Company Details */}
       <Card>
