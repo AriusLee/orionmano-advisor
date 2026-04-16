@@ -5,14 +5,15 @@ import { usePathname } from 'next/navigation';
 import {
   ArrowLeft,
   LayoutDashboard,
-  Upload,
-  FileText,
   Globe,
   ClipboardCheck,
   FileSearch,
   BarChart3,
   FileBarChart,
   Presentation,
+  Rocket,
+  Megaphone,
+  FileSignature,
   Settings,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -43,20 +44,22 @@ function getNavSections(companyId: string): NavSection[] {
       ],
     },
     {
-      title: 'Advisory Modules',
+      title: 'Orionmano',
       items: [
-        { label: 'Gap Analysis', href: `${base}/gap-analysis`, icon: ClipboardCheck },
         { label: 'Industry Expert', href: `${base}/industry`, icon: Globe },
         { label: 'Due Diligence', href: `${base}/dd`, icon: FileSearch },
         { label: 'Valuation', href: `${base}/valuation`, icon: BarChart3 },
       ],
     },
     {
-      title: 'Data',
+      title: 'MVPI',
       items: [
-        { label: 'Documents', href: `${base}/documents`, icon: Upload },
-        { label: 'Decks & Materials', href: `${base}/decks`, icon: Presentation },
-        { label: 'Company Teaser', href: `${base}/teaser`, icon: FileBarChart },
+        { label: 'Gap Analysis', href: `${base}/gap-analysis`, icon: ClipboardCheck },
+        { label: 'Kick-Off', href: `${base}/kickoff`, icon: Rocket },
+        { label: 'Decks', href: `${base}/decks`, icon: Presentation },
+        { label: 'Teaser', href: `${base}/teaser`, icon: FileBarChart },
+        { label: 'IR Releases', href: `${base}/ir-releases`, icon: Megaphone },
+        { label: 'Engagement Letter', href: `${base}/engagement-letter`, icon: FileSignature },
       ],
     },
     {

@@ -1,15 +1,12 @@
 'use client';
 
 import { use, useEffect, useState, useCallback } from 'react';
-import { Globe, Loader2, FileText, List } from 'lucide-react';
+import { Globe, Loader2, FileText } from 'lucide-react';
 import { toast } from 'sonner';
 import { apiJson } from '@/lib/api';
-import { Button } from '@/components/ui/button';
-import { GenerateReportDialog } from '@/components/reports/generate-report-dialog';
 import { IndustryReportDashboard } from '@/components/reports/industry-report-dashboard';
 import { EmptyDataState } from '@/components/empty-data-state';
 import { GeneratingState } from '@/components/generating-state';
-import { useCompanyStore } from '@/stores/company-store';
 
 interface Document {
   id: string;
@@ -51,7 +48,6 @@ const REPORT_TYPE = 'industry_report';
 
 export default function IndustryPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
-  const { openReports, rightPanel } = useCompanyStore();
   const [company, setCompany] = useState<Company | null>(null);
   const [docs, setDocs] = useState<Document[]>([]);
   const [reports, setReports] = useState<ReportMeta[]>([]);
@@ -147,28 +143,6 @@ export default function IndustryPage({ params }: { params: Promise<{ id: string 
             </p>
           </div>
         </div>
-        {hasReport && (
-          <div className="flex items-center gap-2">
-            <GenerateReportDialog
-              companyId={id}
-              moduleType={REPORT_TYPE}
-              moduleName="Industry Expert"
-              onGenerated={loadData}
-            >
-              <Button variant="outline" size="sm" className="cursor-pointer gap-2">
-                <FileText className="h-3.5 w-3.5" /> Regenerate
-              </Button>
-            </GenerateReportDialog>
-            <Button
-              variant={rightPanel === 'reports' ? 'secondary' : 'outline'}
-              size="sm"
-              className="cursor-pointer gap-2"
-              onClick={() => openReports(REPORT_TYPE)}
-            >
-              <List className="h-3.5 w-3.5" /> Reports
-            </Button>
-          </div>
-        )}
       </div>
 
       {hasReport ? (
