@@ -1,11 +1,12 @@
 'use client';
 
 import { useMemo, useEffect, useState, useCallback } from 'react';
-import { X, FileText, Loader2, ChevronRight, Crown, Star, Zap } from 'lucide-react';
+import { X, FileText, Loader2, ChevronRight, Crown, Star, Zap, Plus } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { useCompanyStore } from '@/stores/company-store';
+import { GenerateReportDialog } from '@/components/reports/generate-report-dialog';
 import { apiJson } from '@/lib/api';
 import { cn } from '@/lib/utils';
 
@@ -93,7 +94,7 @@ export function ReportPanel({ companyId }: ReportPanelProps) {
     : 'All Reports';
 
   return (
-    <div className="flex h-full w-80 flex-col border-l bg-background xl:w-96">
+    <div className="relative flex h-full w-80 flex-col border-l bg-background xl:w-96 overflow-hidden">
       <div className="flex h-14 items-center justify-between border-b px-4">
         <div className="flex items-center gap-2">
           <FileText className="h-5 w-5 text-primary" />
@@ -193,7 +194,25 @@ export function ReportPanel({ companyId }: ReportPanelProps) {
             })}
           </div>
         )}
+        {/* Bottom padding so last item isn't hidden behind the fixed button */}
+        {reportModuleFilter && <div className="h-16" />}
       </ScrollArea>
+
+      {/* Generate Report button — fixed at bottom */}
+      {reportModuleFilter && (
+        <div className="absolute bottom-0 left-0 right-0 border-t bg-background p-3">
+          <GenerateReportDialog
+            companyId={companyId}
+            moduleType={reportModuleFilter}
+            moduleName={MODULE_SHORT_LABELS[reportModuleFilter] || REPORT_TYPE_LABELS[reportModuleFilter] || 'Report'}
+            onGenerated={loadReports}
+          >
+            <Button variant="default" size="sm" className="w-full cursor-pointer gap-2">
+              <Plus className="h-3.5 w-3.5" /> Generate {MODULE_SHORT_LABELS[reportModuleFilter] || 'Report'}
+            </Button>
+          </GenerateReportDialog>
+        </div>
+      )}
     </div>
   );
 }

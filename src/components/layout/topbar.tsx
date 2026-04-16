@@ -47,16 +47,7 @@ export function Topbar({ onMenuClick, companyId, companyName }: TopbarProps) {
 
       {/* Right: chat toggle + user menu */}
       <div className="flex items-center gap-2">
-        {companyId && (
-          <Button
-            variant={rightPanel === 'chat' ? 'secondary' : 'ghost'}
-            size="icon"
-            className="cursor-pointer"
-            onClick={toggleChat}
-          >
-            <MessageSquare className="h-5 w-5" />
-          </Button>
-        )}
+        {/* Chat button temporarily disabled — redesigning */}
 
         {mounted && (
           <Popover>

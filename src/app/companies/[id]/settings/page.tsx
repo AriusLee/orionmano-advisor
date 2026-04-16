@@ -9,7 +9,8 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
-import { Save, Loader2, UserPlus, Trash2, Building2, Users } from 'lucide-react';
+import { Save, Loader2, UserPlus, Trash2, Building2, Users, Zap, Star, Crown, Check } from 'lucide-react';
+import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 
 interface Company {
@@ -25,6 +26,7 @@ interface Company {
   status: string;
   engagement_type: string | null;
   target_exchange: string | null;
+  report_tier: string;
 }
 
 interface Member {
@@ -37,6 +39,39 @@ interface Member {
 const STATUS_OPTIONS = ['active', 'on_hold', 'completed', 'archived'];
 const ENGAGEMENT_OPTIONS = ['ipo', 'fundraising', 'ma', 'compliance', 'valuation', 'due_diligence'];
 const EXCHANGE_OPTIONS = ['nasdaq', 'nyse', 'bursa_main', 'bursa_ace', 'hkex', 'sgx', 'other'];
+
+const TIER_OPTIONS = [
+  {
+    id: 'essential',
+    name: 'Essential',
+    icon: Zap,
+    description: 'Key findings, scores, and brief recommendations.',
+    pages: '2-3 pages',
+    iconColor: 'text-slate-500',
+    selectedColor: 'border-slate-500 bg-slate-50 dark:bg-slate-900/50',
+    color: 'border-slate-200 hover:border-slate-400',
+  },
+  {
+    id: 'standard',
+    name: 'Standard',
+    icon: Star,
+    description: 'Full analysis with detailed breakdown.',
+    pages: '5-8 pages',
+    iconColor: 'text-blue-500',
+    selectedColor: 'border-blue-500 bg-blue-50 dark:bg-blue-900/20',
+    color: 'border-blue-200 hover:border-blue-400',
+  },
+  {
+    id: 'premium',
+    name: 'Premium',
+    icon: Crown,
+    description: 'Comprehensive deep-dive with benchmarks and action plan.',
+    pages: '10-15 pages',
+    iconColor: 'text-amber-500',
+    selectedColor: 'border-amber-500 bg-amber-50 dark:bg-amber-900/20',
+    color: 'border-amber-200 hover:border-amber-400',
+  },
+];
 
 export default function SettingsPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
@@ -200,6 +235,50 @@ export default function SettingsPage({ params }: { params: Promise<{ id: string 
                   <option key={s} value={s}>{s.replace('_', ' ').toUpperCase()}</option>
                 ))}
               </select>
+            </div>
+          </div>
+
+          <Separator />
+
+          <div className="space-y-3">
+            <div>
+              <Label>Default Report Tier</Label>
+              <p className="text-xs text-muted-foreground mt-1">
+                The default depth used when generating reports. You can override this per report.
+              </p>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-3">
+              {TIER_OPTIONS.map((tier) => {
+                const TierIcon = tier.icon;
+                const isSelected = (form.report_tier || 'standard') === tier.id;
+                return (
+                  <button
+                    key={tier.id}
+                    type="button"
+                    onClick={() => update('report_tier', tier.id)}
+                    className={cn(
+                      'rounded-lg border-2 p-3 text-left transition-all cursor-pointer',
+                      isSelected ? tier.selectedColor : tier.color
+                    )}
+                  >
+                    <div className="flex items-start gap-2.5">
+                      <div className={cn('flex h-7 w-7 shrink-0 items-center justify-center rounded-md', isSelected ? 'bg-white dark:bg-background' : 'bg-muted')}>
+                        <TierIcon className={cn('h-4 w-4', tier.iconColor)} />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-sm font-semibold">{tier.name}</span>
+                          <div className={cn('flex h-4 w-4 shrink-0 items-center justify-center rounded-full border-2', isSelected ? 'border-primary bg-primary' : 'border-muted-foreground/30')}>
+                            {isSelected && <Check className="h-2.5 w-2.5 text-primary-foreground" />}
+                          </div>
+                        </div>
+                        <p className="text-[11px] text-muted-foreground mt-0.5 leading-snug">{tier.description}</p>
+                        <p className="text-[10px] text-muted-foreground/70 mt-1">~{tier.pages}</p>
+                      </div>
+                    </div>
+                  </button>
+                );
+              })}
             </div>
           </div>
 

@@ -7,7 +7,7 @@ import { apiJson } from '@/lib/api';
 import { CompanySidebar } from '@/components/layout/company-sidebar';
 import { Topbar } from '@/components/layout/topbar';
 import { ChatPanel } from '@/components/layout/chat-panel';
-import { ReportPanel } from '@/components/layout/report-panel';
+import { ActionPanel } from '@/components/layout/action-panel';
 import { useCompanyStore } from '@/stores/company-store';
 import { Sheet, SheetContent } from '@/components/ui/sheet';
 
@@ -57,16 +57,10 @@ export default function CompanyLayout({
           <main className="flex-1 overflow-y-auto bg-muted/30 p-4 lg:p-6">
             {children}
           </main>
-          {rightPanel === 'chat' && (
-            <div className="hidden md:flex">
-              <ChatPanel companyId={id} />
-            </div>
-          )}
-          {rightPanel === 'reports' && (
-            <div className="hidden md:flex">
-              <ReportPanel companyId={id} />
-            </div>
-          )}
+          {/* Action panel — always visible on md+ */}
+          <div className="hidden md:block">
+            <ActionPanel companyId={id} />
+          </div>
         </div>
       </div>
     </div>

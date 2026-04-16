@@ -16,7 +16,7 @@ interface CompanyStore {
 }
 
 export const useCompanyStore = create<CompanyStore>((set) => ({
-  rightPanel: 'chat' as RightPanel,
+  rightPanel: 'reports' as RightPanel,
   reportModuleFilter: null,
   reportTierFilter: null,
 
