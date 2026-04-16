@@ -4,7 +4,8 @@ import { useEffect, useState, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { apiJson } from '@/lib/api';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Loader2, Shield, DollarSign, Calendar, AlertTriangle, Clock, CheckCircle2, XCircle, HelpCircle } from 'lucide-react';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Loader2, Shield, DollarSign, Calendar, AlertTriangle, Clock, CheckCircle2, XCircle, HelpCircle, ChevronRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface ReportSection {
@@ -192,6 +193,17 @@ function parseGantt(content: string): GanttItem[] {
   return items;
 }
 
+function parseActionList(actions: string): string[] {
+  // Split on numbered pattern "1. ", "2. ", etc. at start of string or newline
+  const parts = actions.split(/(?:^|\n)\s*\d+\.\s+/).map(s => s.trim()).filter(Boolean);
+  if (parts.length > 1) return parts;
+  // Fallback: split by bullet markers or newlines
+  return actions
+    .split(/\n|(?:^|\s)[-•]\s+/)
+    .map(p => p.replace(/^[-•]\s*/, '').trim())
+    .filter(Boolean);
+}
+
 function parseDependencies(content: string): string[] {
   const deps: string[] = [];
   const depStart = content.toLowerCase().indexOf('key dependencies');
@@ -212,10 +224,19 @@ function parseDependencies(content: string): string[] {
 // ─── Rating config ───
 
 const RATING_CONFIG = {
-  ready:         { rail: 'bg-emerald-500', bar: 'bg-gradient-to-r from-emerald-600/75 via-emerald-500/85 to-emerald-400/95', barRing: 'ring-emerald-400/35', badgeBg: 'bg-emerald-500/10', badgeText: 'text-emerald-400', badgeRing: 'ring-emerald-500/25', icon: CheckCircle2, label: 'Ready' },
-  conditional:   { rail: 'bg-amber-500',   bar: 'bg-gradient-to-r from-amber-600/75 via-amber-500/85 to-amber-300/95',     barRing: 'ring-amber-400/35',   badgeBg: 'bg-amber-500/10',   badgeText: 'text-amber-400',   badgeRing: 'ring-amber-500/25',   icon: Clock,        label: 'Conditional' },
-  not_ready:     { rail: 'bg-red-500',     bar: 'bg-gradient-to-r from-red-600/75 via-red-500/85 to-red-400/95',           barRing: 'ring-red-400/35',     badgeBg: 'bg-red-500/10',     badgeText: 'text-red-400',     badgeRing: 'ring-red-500/25',     icon: XCircle,      label: 'Not Ready' },
-  info_required: { rail: 'bg-slate-400',   bar: 'bg-gradient-to-r from-slate-600/70 via-slate-500/80 to-slate-400/90',     barRing: 'ring-slate-400/35',   badgeBg: 'bg-slate-500/10',   badgeText: 'text-slate-300',   badgeRing: 'ring-slate-500/25',   icon: HelpCircle,   label: 'Info Required' },
+  ready:         { rail: 'bg-emerald-500', railFade: 'bg-gradient-to-b from-emerald-500 via-emerald-500/60 to-transparent', bar: 'bg-gradient-to-r from-emerald-600/75 via-emerald-500/85 to-emerald-400/95', barRing: 'ring-emerald-400/35', badgeBg: 'bg-emerald-500/10', badgeText: 'text-emerald-400', badgeRing: 'ring-emerald-500/25', icon: CheckCircle2, label: 'Ready' },
+  conditional:   { rail: 'bg-amber-500',   railFade: 'bg-gradient-to-b from-amber-500 via-amber-500/60 to-transparent',     bar: 'bg-gradient-to-r from-amber-600/75 via-amber-500/85 to-amber-300/95',     barRing: 'ring-amber-400/35',   badgeBg: 'bg-amber-500/10',   badgeText: 'text-amber-400',   badgeRing: 'ring-amber-500/25',   icon: Clock,        label: 'Conditional' },
+  not_ready:     { rail: 'bg-red-500',     railFade: 'bg-gradient-to-b from-red-500 via-red-500/60 to-transparent',         bar: 'bg-gradient-to-r from-red-600/75 via-red-500/85 to-red-400/95',           barRing: 'ring-red-400/35',     badgeBg: 'bg-red-500/10',     badgeText: 'text-red-400',     badgeRing: 'ring-red-500/25',     icon: XCircle,      label: 'Not Ready' },
+  info_required: { rail: 'bg-slate-400',   railFade: 'bg-gradient-to-b from-slate-400 via-slate-400/60 to-transparent',     bar: 'bg-gradient-to-r from-slate-600/70 via-slate-500/80 to-slate-400/90',     barRing: 'ring-slate-400/35',   badgeBg: 'bg-slate-500/10',   badgeText: 'text-slate-300',   badgeRing: 'ring-slate-500/25',   icon: HelpCircle,   label: 'Info Required' },
+};
+
+// Most serious → least serious. Drives scorecard grouping order.
+const SEVERITY_ORDER: Array<ScorecardItem['rating']> = ['not_ready', 'conditional', 'info_required', 'ready'];
+const SEVERITY_GROUP_LABEL: Record<ScorecardItem['rating'], string> = {
+  not_ready: 'Critical Gaps',
+  conditional: 'Conditional',
+  info_required: 'Information Required',
+  ready: 'Meeting Standards',
 };
 
 /**
@@ -285,6 +306,7 @@ export function GapAnalysisDashboard({ companyId }: { companyId: string }) {
   const [loading, setLoading] = useState(true);
   const [hover, setHover] = useState<HoverState | null>(null);
   const [cursor, setCursor] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+  const [selectedScorecardItem, setSelectedScorecardItem] = useState<ScorecardItem | null>(null);
 
   const fetchReport = useCallback(async () => {
     try {
@@ -340,9 +362,9 @@ export function GapAnalysisDashboard({ companyId }: { companyId: string }) {
         ].filter(m => m.value);
 
         return (
-          <Card>
-            <CardContent className="py-5">
-              <div className="grid gap-x-6 gap-y-4 sm:grid-cols-2 xl:grid-cols-4">
+          <Card size="sm">
+            <CardContent className="py-1">
+              <div className="grid gap-x-6 gap-y-3 sm:grid-cols-2 xl:grid-cols-4">
                 {metrics.map((m, i) => (
                   <div
                     key={m.label}
@@ -366,7 +388,7 @@ export function GapAnalysisDashboard({ companyId }: { companyId: string }) {
         );
       })()}
 
-      {/* ─── Scorecard Grid ─── */}
+      {/* ─── Scorecard Grid — grouped by severity (most → least serious) ─── */}
       {ratings.length > 0 && (
         <Card>
           <CardHeader className="pb-3">
@@ -375,29 +397,40 @@ export function GapAnalysisDashboard({ companyId }: { companyId: string }) {
               IPO Readiness Scorecard
             </CardTitle>
           </CardHeader>
-          <CardContent>
-            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-              {ratings.map((r) => {
-                const cfg = RATING_CONFIG[r.rating];
-                const Icon = cfg.icon;
-                return (
-                  <div
-                    key={r.dimension}
-                    className="relative overflow-hidden rounded-lg border border-border/60 bg-muted/20 p-3 pl-4 space-y-2 transition-colors hover:bg-muted/30"
-                  >
-                    <span aria-hidden className={cn('absolute left-0 top-0 bottom-0 w-[3px]', cfg.rail)} />
-                    <div className="flex items-start justify-between gap-2">
-                      <p className="text-xs font-semibold leading-tight">{r.dimension}</p>
-                      <div className={cn('flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium ring-1 ring-inset', cfg.badgeBg, cfg.badgeText, cfg.badgeRing)}>
-                        <Icon className="h-3 w-3" />
-                        {cfg.label}
-                      </div>
-                    </div>
-                    <p className="text-[11px] leading-relaxed text-muted-foreground line-clamp-4">{r.finding}</p>
+          <CardContent className="space-y-5">
+            {SEVERITY_ORDER.map((rating) => {
+              const group = ratings.filter((r) => r.rating === rating);
+              if (group.length === 0) return null;
+              const cfg = RATING_CONFIG[rating];
+              const GroupIcon = cfg.icon;
+              return (
+                <div key={rating} className="space-y-2">
+                  <div className="flex items-center gap-2">
+                    <GroupIcon className={cn('h-3.5 w-3.5', cfg.badgeText)} />
+                    <p className={cn('text-[11px] font-semibold uppercase tracking-[0.14em]', cfg.badgeText)}>
+                      {SEVERITY_GROUP_LABEL[rating]}
+                    </p>
+                    <span className="text-[10px] font-mono text-muted-foreground/60">{group.length}</span>
                   </div>
-                );
-              })}
-            </div>
+                  <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+                    {group.map((r) => (
+                      <button
+                        key={r.dimension}
+                        type="button"
+                        onClick={() => setSelectedScorecardItem(r)}
+                        className="group relative overflow-hidden rounded-lg border border-border/60 bg-muted/20 p-3 pl-4 text-left transition-all cursor-pointer hover:bg-muted/40 hover:border-border"
+                      >
+                        <span aria-hidden className={cn('absolute left-0 top-0 bottom-0 w-[3px]', cfg.rail)} />
+                        <div className="flex items-center justify-between gap-2">
+                          <p className="text-xs font-semibold leading-tight truncate">{r.dimension}</p>
+                          <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground/50 transition-all group-hover:text-foreground group-hover:translate-x-0.5" />
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
           </CardContent>
         </Card>
       )}
@@ -458,7 +491,7 @@ export function GapAnalysisDashboard({ companyId }: { companyId: string }) {
                   </div>
 
                   {/* Gantt rows */}
-                  {ganttItems.map((item) => {
+                  {ganttItems.map((item, rowIdx) => {
                     const firstActive = item.phases.indexOf(true);
                     const lastActive = item.phases.lastIndexOf(true);
                     const matched = matchScorecardForWorkstream(item.name, ratings);
@@ -470,6 +503,7 @@ export function GapAnalysisDashboard({ companyId }: { companyId: string }) {
                     const barEndCol = firstActive !== -1 ? 2 + PHASE_MONTH_START[lastActive] + PHASE_MONTH_DURATION[lastActive] : 0;
                     const isHovered = hover?.name === item.name;
                     const hasTooltipData = !!matched && (matched.actions || matched.finding);
+                    const isOdd = rowIdx % 2 === 1;
 
                     const handleEnter = () => {
                       if (!matched) return;
@@ -486,8 +520,12 @@ export function GapAnalysisDashboard({ companyId }: { companyId: string }) {
                       <div
                         key={item.name}
                         className={cn(
-                          'relative grid items-center transition-colors',
-                          isHovered ? 'bg-foreground/[0.04]' : 'hover:bg-foreground/[0.02]',
+                          'relative grid transition-colors h-8',
+                          isHovered
+                            ? 'bg-foreground/[0.10]'
+                            : isOdd
+                              ? 'bg-foreground/[0.06] hover:bg-foreground/[0.08]'
+                              : 'hover:bg-foreground/[0.04]',
                           hasTooltipData && 'cursor-default'
                         )}
                         style={{ gridTemplateColumns: TIMELINE_GRID }}
@@ -495,12 +533,12 @@ export function GapAnalysisDashboard({ companyId }: { companyId: string }) {
                         onMouseMove={(e) => setCursor({ x: e.clientX, y: e.clientY })}
                         onMouseLeave={() => setHover(null)}
                       >
-                        <div className="flex items-center px-2 py-1">
-                          <p className="text-[11px] font-medium truncate text-foreground/90">{item.name}</p>
+                        <div className="flex items-center px-2">
+                          <span className="text-[11px] font-medium truncate text-foreground/90 leading-8">{item.name}</span>
                         </div>
                         {/* Structural spacer cells (no borders — overlay handles lines) */}
                         {Array.from({ length: TOTAL_MONTHS }).map((_, m) => (
-                          <div key={m} className="py-1 h-full" />
+                          <div key={m} />
                         ))}
                         {/* Single continuous bar */}
                         {firstActive !== -1 && (
@@ -563,15 +601,22 @@ export function GapAnalysisDashboard({ companyId }: { companyId: string }) {
                   </tr>
                 </thead>
                 <tbody>
-                  {workstreams.map((ws) => {
+                  {workstreams.map((ws, wsIdx) => {
                     const statusEmoji = ws.status.match(/🟢|🟡|🔴|⚪/)?.[0] || '';
                     const statusDot = STATUS_COLORS[statusEmoji] || 'bg-slate-500';
                     const statusText = ws.status.replace(/🟢|🟡|🔴|⚪/g, '').trim();
                     const severityColor = ws.severity.toLowerCase().includes('critical') ? 'text-red-400' :
                       ws.severity.toLowerCase().includes('high') ? 'text-amber-400' : 'text-muted-foreground';
+                    const isOdd = wsIdx % 2 === 1;
 
                     return (
-                      <tr key={ws.num} className="border-b border-border/20 hover:bg-muted/30 transition-colors">
+                      <tr
+                        key={ws.num}
+                        className={cn(
+                          'transition-colors',
+                          isOdd ? 'bg-foreground/[0.035] hover:bg-foreground/[0.06]' : 'hover:bg-foreground/[0.03]'
+                        )}
+                      >
                         <td className="py-2 px-2 text-muted-foreground">{ws.num}</td>
                         <td className="py-2 px-2 font-medium">{ws.name}</td>
                         <td className="py-2 px-2 text-center">
@@ -614,6 +659,75 @@ export function GapAnalysisDashboard({ companyId }: { companyId: string }) {
           </CardContent>
         </Card>
       )}
+
+      {/* Scorecard detail modal — full finding + recommended actions */}
+      <Dialog open={!!selectedScorecardItem} onOpenChange={(open) => !open && setSelectedScorecardItem(null)}>
+        <DialogContent className="sm:max-w-lg overflow-hidden p-0 gap-0">
+          {selectedScorecardItem && (() => {
+            const cfg = RATING_CONFIG[selectedScorecardItem.rating];
+            const Icon = cfg.icon;
+            const actionSteps = selectedScorecardItem.actions ? parseActionList(selectedScorecardItem.actions) : [];
+            return (
+              <div className="relative">
+                {/* Left severity rail — full modal height, fading to transparent at the bottom */}
+                <span aria-hidden className={cn('absolute left-0 top-0 bottom-0 w-1', cfg.railFade)} />
+
+                {/* Header */}
+                <div className="border-b border-border/60 pl-6 pr-10 pt-5 pb-4">
+                  <DialogHeader className="space-y-2.5">
+                    <div className={cn(
+                      'inline-flex w-fit items-center gap-1.5 rounded-full px-2 py-0.5 text-[10px] font-medium ring-1 ring-inset',
+                      cfg.badgeBg, cfg.badgeText, cfg.badgeRing
+                    )}>
+                      <Icon className="h-3 w-3" />
+                      {cfg.label}
+                    </div>
+                    <DialogTitle className="text-lg font-semibold tracking-tight leading-tight">
+                      {selectedScorecardItem.dimension}
+                    </DialogTitle>
+                  </DialogHeader>
+                </div>
+
+                {/* Body */}
+                <div className="pl-6 pr-6 py-5 space-y-6 max-h-[60vh] overflow-y-auto">
+                  {selectedScorecardItem.finding && (
+                    <section>
+                      <div className="mb-2 flex items-center gap-2">
+                        <span className="h-px w-3 bg-border" />
+                        <p className="text-[9px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">Finding</p>
+                      </div>
+                      <p className="text-sm leading-relaxed text-foreground/90 whitespace-pre-line">
+                        {selectedScorecardItem.finding}
+                      </p>
+                    </section>
+                  )}
+                  {actionSteps.length > 0 && (
+                    <section>
+                      <div className="mb-3 flex items-center gap-2">
+                        <span className="h-px w-3 bg-border" />
+                        <p className="text-[9px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">Recommended Actions</p>
+                      </div>
+                      <ol className="space-y-2.5">
+                        {actionSteps.map((step, i) => (
+                          <li key={i} className="flex gap-3">
+                            <span className={cn(
+                              'mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] font-semibold ring-1 ring-inset tabular-nums',
+                              cfg.badgeBg, cfg.badgeText, cfg.badgeRing
+                            )}>
+                              {i + 1}
+                            </span>
+                            <p className="text-sm leading-relaxed text-foreground/90">{step}</p>
+                          </li>
+                        ))}
+                      </ol>
+                    </section>
+                  )}
+                </div>
+              </div>
+            );
+          })()}
+        </DialogContent>
+      </Dialog>
 
       {/* Cursor-following tooltip for Gantt rows — portaled to <body> so fixed
           positioning bypasses transformed ancestors (stagger-children, etc.) */}
