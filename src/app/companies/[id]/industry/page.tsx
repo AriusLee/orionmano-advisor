@@ -8,8 +8,6 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { GenerateReportDialog } from '@/components/reports/generate-report-dialog';
 import { SectionPreview } from '@/components/reports/section-preview';
-import { IndustryCharts } from '@/components/reports/module-charts';
-import { UploadZone } from '@/components/documents/upload-zone';
 import { EmptyDataState } from '@/components/empty-data-state';
 import { useCompanyStore } from '@/stores/company-store';
 
@@ -52,15 +50,6 @@ const ANALYSIS_SECTIONS = [
   'Strategic Recommendations',
 ];
 
-const SUGGESTED_FILES = [
-  'Company prospectus',
-  'Annual report',
-  'Company profile deck',
-  'Industry research report',
-  'Business plan',
-  'Market analysis',
-];
-
 export default function IndustryPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const { openReports, rightPanel } = useCompanyStore();
@@ -90,8 +79,11 @@ export default function IndustryPage({ params }: { params: Promise<{ id: string 
   }
 
   const extractedDocs = docs.filter(d => d.extraction_status === 'completed' && d.extracted_data);
-  const hasIndustry = !!company?.industry;
-  const isReady = hasIndustry || extractedDocs.length > 0;
+  // Ready only when every Required category from the checklist has at least one received doc.
+  // Keeps the page honest — just having `company.industry` set at creation time isn't enough.
+  const isReady = REQUIRED_DOCS.every((catId) =>
+    docs.some((d) => d.extraction_status === 'completed' && (d.category || '').trim() === catId)
+  );
 
   return (
     <div className="space-y-6">
@@ -141,18 +133,18 @@ export default function IndustryPage({ params }: { params: Promise<{ id: string 
         />
       )}
 
-      {/* Ready state */}
+      {/* Ready state — real company context + planned report outline + generate CTA */}
       {isReady && (
         <>
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-base">
-                <CheckCircle2 className="h-5 w-5 text-emerald-500" /> Analysis Ready
+                <CheckCircle2 className="h-5 w-5 text-emerald-500" /> Context Ready
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
               <p className="text-sm text-muted-foreground">
-                Company data available. Generate an Industry Expert Report for comprehensive market analysis.
+                Company context is available. Generate the Industry Expert Report to produce market sizing, competitive positioning, and strategic recommendations grounded in your uploaded materials.
               </p>
               {company?.industry && (
                 <div className="rounded-lg border p-4">
@@ -180,8 +172,6 @@ export default function IndustryPage({ params }: { params: Promise<{ id: string 
             </CardContent>
           </Card>
 
-          <IndustryCharts />
-
           <SectionPreview
             companyId={id}
             reportType="industry_report"
@@ -197,13 +187,6 @@ export default function IndustryPage({ params }: { params: Promise<{ id: string 
               <List className="h-4 w-4" /> View Reports
             </Button>
           </div>
-
-          <Card>
-            <CardHeader><CardTitle className="text-base">Upload Additional Materials</CardTitle></CardHeader>
-            <CardContent>
-              <UploadZone companyId={id} suggestedFiles={SUGGESTED_FILES} documents={docs.filter(d => d.extraction_status !== 'completed')} onUploaded={loadData} />
-            </CardContent>
-          </Card>
         </>
       )}
     </div>

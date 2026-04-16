@@ -102,14 +102,21 @@ function formatRelativeDate(iso: string): string {
 export function ActionPanel({ companyId }: ActionPanelProps) {
   const { reportModuleFilter } = useCompanyStore();
   const router = useRouter();
-  const [activeTab, setActiveTab] = useState<Tab>('reports');
+  const [activeTab, setActiveTab] = useState<Tab>('documents');
+  const [tabManuallyChosen, setTabManuallyChosen] = useState(false);
   const [reports, setReports] = useState<ReportItem[]>([]);
   const [docs, setDocs] = useState<DocumentItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [docsLoaded, setDocsLoaded] = useState(false);
   const [showGenDialog, setShowGenDialog] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [companyTier, setCompanyTier] = useState('standard');
   const [drillType, setDrillType] = useState<ReportType | null>(null);
+
+  const pickTab = (t: Tab) => {
+    setActiveTab(t);
+    setTabManuallyChosen(true);
+  };
 
   const loadReports = useCallback(() => {
     apiJson<ReportItem[]>(`/companies/${companyId}/reports`)
@@ -120,9 +127,18 @@ export function ActionPanel({ companyId }: ActionPanelProps) {
 
   const loadDocs = useCallback(() => {
     apiJson<DocumentItem[]>(`/companies/${companyId}/documents`)
-      .then(setDocs)
-      .catch(() => {});
+      .then((d) => {
+        setDocs(d);
+        setDocsLoaded(true);
+      })
+      .catch(() => setDocsLoaded(true));
   }, [companyId]);
+
+  // First-load heuristic: if user has docs, show Reports; if empty, keep Documents tab active.
+  useEffect(() => {
+    if (!docsLoaded || tabManuallyChosen) return;
+    if (docs.length > 0) setActiveTab('reports');
+  }, [docsLoaded, tabManuallyChosen, docs.length]);
 
   useEffect(() => {
     apiJson<{ report_tier: string }>(`/companies/${companyId}`)
@@ -179,7 +195,7 @@ export function ActionPanel({ companyId }: ActionPanelProps) {
       {/* ─── HEADER: Tab nav ─── */}
       <div className={cn('absolute top-0 left-0 right-0 z-10 flex border-b bg-background', HEADER_H)}>
         <button
-          onClick={() => setActiveTab('reports')}
+          onClick={() => pickTab('reports')}
           className={cn(
             'flex-1 flex items-center justify-center gap-1.5 text-xs font-medium transition-colors cursor-pointer border-b-2',
             activeTab === 'reports'
@@ -196,9 +212,9 @@ export function ActionPanel({ companyId }: ActionPanelProps) {
           )}
         </button>
         <button
-          onClick={() => setActiveTab('documents')}
+          onClick={() => pickTab('documents')}
           className={cn(
-            'flex-1 flex items-center justify-center gap-1.5 text-xs font-medium transition-colors cursor-pointer border-b-2',
+            'relative flex-1 flex items-center justify-center gap-1.5 text-xs font-medium transition-colors cursor-pointer border-b-2',
             activeTab === 'documents'
               ? 'border-primary text-foreground'
               : 'border-transparent text-muted-foreground hover:text-foreground'
@@ -206,9 +222,14 @@ export function ActionPanel({ companyId }: ActionPanelProps) {
         >
           <FolderOpen className="h-3.5 w-3.5" />
           Documents
-          {docs.length > 0 && (
+          {docs.length > 0 ? (
             <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-muted px-1 text-[10px] font-medium text-muted-foreground">
               {docs.length}
+            </span>
+          ) : docsLoaded && (
+            <span aria-label="No documents uploaded" className="relative flex h-1.5 w-1.5">
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-500 opacity-70" />
+              <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-red-500" />
             </span>
           )}
         </button>

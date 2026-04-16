@@ -51,8 +51,10 @@ export default function GapAnalysisPage({ params }: { params: Promise<{ id: stri
     return <div className="flex items-center justify-center py-20"><Loader2 className="h-8 w-8 animate-spin text-muted-foreground" /></div>;
   }
 
-  const extractedDocs = docs.filter(d => d.extraction_status === 'completed' && d.extracted_data);
-  const isReady = extractedDocs.length > 0;
+  // Ready only when every Required category from the checklist has at least one received doc.
+  const isReady = REQUIRED_DOCS.every((catId) =>
+    docs.some((d) => d.extraction_status === 'completed' && (d.category || '').trim() === catId)
+  );
 
   return (
     <div className="space-y-6 stagger-children">
