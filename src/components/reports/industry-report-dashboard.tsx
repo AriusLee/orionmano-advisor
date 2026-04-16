@@ -22,6 +22,13 @@ import { cn } from '@/lib/utils';
 import { ChartBlock, parseChartSpec, type ChartSpec } from './chart-block';
 import { MARKDOWN_COMPONENTS } from './section-preview';
 
+// LLM occasionally embeds inline citation markup like `<sup>1</sup>` inside
+// structured data fields. SVG <text> doesn't parse HTML, so without this the
+// raw tags would render as visible characters in chart labels.
+function stripInlineMarkup(s: string): string {
+  return s.replace(/<[^>]+>/g, '').trim();
+}
+
 const COLORS = [
   'oklch(0.75 0.15 175)',
   'oklch(0.65 0.15 250)',
@@ -488,7 +495,7 @@ function PeerScatter({ peers }: { peers: PeerRow[] }) {
       x: p.revenue as number,
       y: (p.ebitdaMargin ?? p.patMargin) as number,
       z: 240,
-      name: p.name,
+      name: stripInlineMarkup(p.name),
     }));
   if (data.length < 2) return null;
   return (
