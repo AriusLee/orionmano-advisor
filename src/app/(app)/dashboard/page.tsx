@@ -1,17 +1,30 @@
-"use client";
+'use client';
 
-import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
-import { useAuth } from "@/lib/auth-context";
-import { apiJson } from "@/lib/api";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Building2, FileText, Upload, BarChart3, ArrowRight } from "lucide-react";
+import { useEffect, useMemo, useState } from 'react';
+import { useRouter } from 'next/navigation';
+import type { LucideIcon } from 'lucide-react';
 import {
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-  PieChart, Pie, Cell,
-  AreaChart, Area,
-} from "recharts";
+  Building2,
+  FileText,
+  PenSquare,
+  AlertCircle,
+  Sparkles,
+  ArrowRight,
+} from 'lucide-react';
+import {
+  AreaChart,
+  Area,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+  XAxis,
+  YAxis,
+} from 'recharts';
+
+import { useAuth } from '@/lib/auth-context';
+import { apiJson } from '@/lib/api';
+import { cn } from '@/lib/utils';
+import { CompanyLogo } from '@/components/company-logo';
 
 interface Company {
   id: string;
@@ -19,6 +32,8 @@ interface Company {
   industry: string | null;
   status: string;
   engagement_type: string | null;
+  tier?: string | null;
+  logo_url?: string | null;
   created_at: string;
 }
 
@@ -34,352 +49,422 @@ interface Document {
   extraction_status: string;
 }
 
-const CHART_COLORS = [
-  "oklch(0.75 0.15 175)",  // teal primary
-  "oklch(0.65 0.15 250)",  // blue
-  "oklch(0.70 0.12 140)",  // green
-  "oklch(0.60 0.18 300)",  // purple
-  "oklch(0.55 0.15 260)",  // indigo
-  "oklch(0.70 0.15 50)",   // amber
-];
+const HALO_GRADIENT =
+  'radial-gradient(circle at center, color-mix(in oklch, var(--primary) 22%, transparent), transparent 65%)';
+
+const REPORT_STROKE = 'oklch(0.65 0.15 250)';
 
 export default function DashboardPage() {
   const { user } = useAuth();
   const router = useRouter();
   const [companies, setCompanies] = useState<Company[]>([]);
-  const [allReports, setAllReports] = useState<Report[]>([]);
-  const [allDocs, setAllDocs] = useState<number>(0);
+  const [reports, setReports] = useState<Report[]>([]);
+  const [docsByCompany, setDocsByCompany] = useState<Record<string, Document[]>>({});
 
   useEffect(() => {
     if (!user) return;
-    apiJson<Company[]>("/companies").then(async (comps) => {
-      setCompanies(comps);
-      // Fetch reports and docs for all companies
-      let reports: Report[] = [];
-      let docs = 0;
-      for (const c of comps.slice(0, 10)) {
-        try {
-          const r = await apiJson<Report[]>(`/companies/${c.id}/reports`);
-          reports = [...reports, ...r];
-        } catch { /* skip */ }
-        try {
-          const d = await apiJson<Document[]>(`/companies/${c.id}/documents`);
-          docs += d.length;
-        } catch { /* skip */ }
-      }
-      setAllReports(reports);
-      setAllDocs(docs);
-    }).catch(() => {});
+    apiJson<Company[]>('/companies')
+      .then(async (comps) => {
+        setCompanies(comps);
+        const docs: Record<string, Document[]> = {};
+        let allReports: Report[] = [];
+        for (const c of comps.slice(0, 20)) {
+          try {
+            const r = await apiJson<Report[]>(`/companies/${c.id}/reports`);
+            allReports = [...allReports, ...r];
+          } catch {
+            /* skip */
+          }
+          try {
+            const d = await apiJson<Document[]>(`/companies/${c.id}/documents`);
+            docs[c.id] = d;
+          } catch {
+            docs[c.id] = [];
+          }
+        }
+        setReports(allReports);
+        setDocsByCompany(docs);
+      })
+      .catch(() => {});
   }, [user]);
 
-  // --- Derived chart data ---
+  const totalDocs = useMemo(
+    () => Object.values(docsByCompany).reduce((a, d) => a + d.length, 0),
+    [docsByCompany],
+  );
+  const extractedDocs = useMemo(
+    () =>
+      Object.values(docsByCompany)
+        .flat()
+        .filter((d) => d.extraction_status === 'completed').length,
+    [docsByCompany],
+  );
+  const draftReports = reports.filter((r) => r.status === 'draft').length;
+  const needsAttention = useMemo(() => {
+    return companies.filter((c) => {
+      const docs = docsByCompany[c.id] || [];
+      return (
+        !c.industry ||
+        docs.length === 0 ||
+        docs.some((d) => d.extraction_status === 'failed')
+      );
+    }).length;
+  }, [companies, docsByCompany]);
 
-  // Engagement type distribution
-  const engagementData = (() => {
-    const counts: Record<string, number> = {};
-    companies.forEach((c) => {
-      const type = c.engagement_type?.toUpperCase() || "OTHER";
-      counts[type] = (counts[type] || 0) + 1;
-    });
-    return Object.entries(counts).map(([name, value]) => ({ name, value }));
-  })();
-
-  // Report type distribution
-  const reportTypeData = (() => {
-    const labels: Record<string, string> = {
-      industry_report: "Industry",
-      dd_report: "Due Diligence",
-      valuation_report: "Valuation",
-      teaser: "Teaser",
-      sales_deck: "Sales Deck",
-      kickoff_deck: "Kick-off",
-      company_deck: "Company Deck",
-    };
-    const counts: Record<string, number> = {};
-    allReports.forEach((r) => {
-      const label = labels[r.report_type] || r.report_type;
-      counts[label] = (counts[label] || 0) + 1;
-    });
-    return Object.entries(counts).map(([name, count]) => ({ name, count }));
-  })();
-
-  // Report status distribution
-  const reportStatusData = (() => {
-    const counts: Record<string, number> = { draft: 0, generating: 0, pending: 0, failed: 0 };
-    allReports.forEach((r) => { counts[r.status] = (counts[r.status] || 0) + 1; });
-    return Object.entries(counts).filter(([, v]) => v > 0).map(([name, value]) => ({ name, value }));
-  })();
-
-  // Activity over time (last 7 days)
-  const activityData = (() => {
+  const activityData = useMemo(() => {
     const days: Record<string, { companies: number; reports: number }> = {};
     for (let i = 6; i >= 0; i--) {
       const d = new Date();
       d.setDate(d.getDate() - i);
-      const key = d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+      const key = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
       days[key] = { companies: 0, reports: 0 };
     }
     companies.forEach((c) => {
-      const key = new Date(c.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+      const key = new Date(c.created_at).toLocaleDateString('en-US', {
+        month: 'short',
+        day: 'numeric',
+      });
       if (days[key]) days[key].companies++;
     });
-    allReports.forEach((r) => {
-      const key = new Date(r.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+    reports.forEach((r) => {
+      const key = new Date(r.created_at).toLocaleDateString('en-US', {
+        month: 'short',
+        day: 'numeric',
+      });
       if (days[key]) days[key].reports++;
     });
     return Object.entries(days).map(([date, data]) => ({ date, ...data }));
-  })();
+  }, [companies, reports]);
 
-  // Company status breakdown
-  const statusData = (() => {
-    const counts: Record<string, number> = {};
-    companies.forEach((c) => {
-      const s = c.status || "active";
-      counts[s] = (counts[s] || 0) + 1;
-    });
-    return Object.entries(counts).map(([name, value]) => ({ name: name.replace("_", " "), value }));
-  })();
-
-  const totalReports = allReports.length;
-  const draftReports = allReports.filter((r) => r.status === "draft").length;
+  const firstName = user?.name?.split(' ')[0] || 'there';
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h2 className="text-2xl font-semibold">Dashboard</h2>
-        <p className="text-sm text-muted-foreground">Welcome back, {user?.name}</p>
-      </div>
+    <div className="space-y-8">
+      {/* Hero */}
+      <section className="relative overflow-hidden rounded-2xl border border-border/60 bg-card/30 px-8 py-10">
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-0 animate-grid-drift opacity-[0.04]"
+          style={{
+            backgroundImage:
+              'linear-gradient(to right, currentColor 1px, transparent 1px), linear-gradient(to bottom, currentColor 1px, transparent 1px)',
+            backgroundSize: '48px 48px',
+            maskImage:
+              'radial-gradient(ellipse at 20% 50%, black 30%, transparent 70%)',
+            WebkitMaskImage:
+              'radial-gradient(ellipse at 20% 50%, black 30%, transparent 70%)',
+          }}
+        />
+        <div
+          aria-hidden
+          className="pointer-events-none absolute -left-24 top-1/2 h-[380px] w-[380px] -translate-y-1/2 animate-halo blur-3xl"
+          style={{ background: HALO_GRADIENT }}
+        />
+
+        <div className="relative flex items-start justify-between gap-6">
+          <div>
+            <div className="mb-3 flex items-center gap-2">
+              <Sparkles className="h-3 w-3 text-primary/70" />
+              <p className="text-[10px] font-semibold uppercase tracking-[0.32em] text-primary/80">
+                Command Center
+              </p>
+            </div>
+            <h1 className="text-3xl font-semibold leading-tight tracking-tight">
+              Welcome back, {firstName}.
+            </h1>
+            <p className="mt-2 max-w-lg text-sm leading-relaxed text-muted-foreground">
+              {companies.length === 0
+                ? 'Start by creating your first engagement — AI will handle the rest.'
+                : `Tracking ${companies.length} ${companies.length === 1 ? 'engagement' : 'engagements'} across ${totalDocs} ${totalDocs === 1 ? 'document' : 'documents'}.`}
+            </p>
+          </div>
+          <div className="hidden items-center gap-2 rounded-full border border-border/60 bg-muted/25 px-3 py-1.5 text-[11px] text-muted-foreground sm:inline-flex">
+            <span className="relative flex h-2 w-2">
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary opacity-60" />
+              <span className="relative inline-flex h-2 w-2 rounded-full bg-primary" />
+            </span>
+            All systems active
+          </div>
+        </div>
+      </section>
 
       {/* Stat cards */}
-      <div className="grid gap-4 md:grid-cols-4">
-        <Card className="cursor-pointer hover:bg-accent/50 transition-colors" onClick={() => router.push("/companies")}>
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium">Companies</CardTitle>
-            <Building2 className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{companies.length}</div>
-            <p className="text-xs text-muted-foreground">Active engagements</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium">Documents</CardTitle>
-            <Upload className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{allDocs}</div>
-            <p className="text-xs text-muted-foreground">Uploaded across all companies</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium">Reports</CardTitle>
-            <FileText className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{totalReports}</div>
-            <p className="text-xs text-muted-foreground">{draftReports} draft</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium">Modules</CardTitle>
-            <BarChart3 className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">3</div>
-            <p className="text-xs text-muted-foreground">Industry · DD · Valuation</p>
-          </CardContent>
-        </Card>
-      </div>
+      <section>
+        <SectionLabel>At a glance</SectionLabel>
+        <div className="stagger-children mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <StatCard
+            label="Active Engagements"
+            value={companies.length}
+            caption={
+              companies.length === 0
+                ? 'None yet — create your first'
+                : `${companies.filter((c) => !c.status || c.status === 'active').length} active`
+            }
+            icon={Building2}
+            onClick={() => router.push('/companies')}
+          />
+          <StatCard
+            label="Documents"
+            value={totalDocs}
+            caption={
+              totalDocs === 0
+                ? 'Awaiting first upload'
+                : `${extractedDocs} extracted · ${totalDocs - extractedDocs} pending`
+            }
+            icon={FileText}
+          />
+          <StatCard
+            label="Reports in Draft"
+            value={draftReports}
+            caption={
+              reports.length === 0
+                ? 'No reports generated yet'
+                : `${reports.length} total across engagements`
+            }
+            icon={PenSquare}
+          />
+          <StatCard
+            label="Needs Attention"
+            value={needsAttention}
+            caption={
+              needsAttention === 0
+                ? companies.length === 0
+                  ? 'Nothing to review'
+                  : 'All engagements on track'
+                : 'Missing industry, docs, or failed extractions'
+            }
+            icon={AlertCircle}
+            accent={needsAttention > 0 ? 'warn' : undefined}
+            onClick={needsAttention > 0 ? () => router.push('/companies') : undefined}
+          />
+        </div>
+      </section>
 
-      {/* Charts row 1 */}
-      <div className="grid gap-4 md:grid-cols-2">
-        {/* Activity over time */}
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">Activity (Last 7 Days)</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="h-52">
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={activityData}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="oklch(0.30 0.014 260)" />
-                  <XAxis dataKey="date" tick={{ fontSize: 11, fill: "oklch(0.65 0.01 260)" }} axisLine={false} tickLine={false} />
-                  <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: "oklch(0.65 0.01 260)" }} axisLine={false} tickLine={false} />
-                  <Tooltip
-                    contentStyle={{ background: "oklch(0.20 0.014 260)", border: "1px solid oklch(0.30 0.014 260)", borderRadius: 8, fontSize: 12 }}
-                    labelStyle={{ color: "oklch(0.93 0.006 260)" }}
-                  />
-                  <Area type="monotone" dataKey="companies" stackId="1" stroke={CHART_COLORS[0]} fill={CHART_COLORS[0]} fillOpacity={0.3} name="Companies" />
-                  <Area type="monotone" dataKey="reports" stackId="1" stroke={CHART_COLORS[1]} fill={CHART_COLORS[1]} fillOpacity={0.3} name="Reports" />
-                </AreaChart>
-              </ResponsiveContainer>
+      {/* Activity */}
+      <section>
+        <SectionLabel>Activity</SectionLabel>
+        <div className="relative mt-4 overflow-hidden rounded-xl border border-border/50 bg-card/30 p-6">
+          <div className="mb-5 flex items-center justify-between">
+            <div>
+              <h3 className="text-sm font-semibold">Last 7 days</h3>
+              <p className="mt-0.5 text-xs text-muted-foreground">
+                Engagement and reporting cadence
+              </p>
             </div>
-          </CardContent>
-        </Card>
+            <div className="flex items-center gap-4 text-[11px] text-muted-foreground">
+              <span className="flex items-center gap-1.5">
+                <span
+                  className="h-2 w-2 rounded-full"
+                  style={{ background: 'var(--primary)' }}
+                />
+                Companies
+              </span>
+              <span className="flex items-center gap-1.5">
+                <span
+                  className="h-2 w-2 rounded-full"
+                  style={{ background: REPORT_STROKE }}
+                />
+                Reports
+              </span>
+            </div>
+          </div>
+          <div className="h-56">
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart
+                data={activityData}
+                margin={{ top: 10, right: 10, bottom: 0, left: -20 }}
+              >
+                <defs>
+                  <linearGradient id="fillCompanies" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="var(--primary)" stopOpacity={0.35} />
+                    <stop offset="100%" stopColor="var(--primary)" stopOpacity={0} />
+                  </linearGradient>
+                  <linearGradient id="fillReports" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor={REPORT_STROKE} stopOpacity={0.35} />
+                    <stop offset="100%" stopColor={REPORT_STROKE} stopOpacity={0} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid
+                  strokeDasharray="3 3"
+                  stroke="oklch(0.30 0.014 260)"
+                  vertical={false}
+                />
+                <XAxis
+                  dataKey="date"
+                  tick={{ fontSize: 11, fill: 'oklch(0.65 0.01 260)' }}
+                  axisLine={false}
+                  tickLine={false}
+                />
+                <YAxis
+                  allowDecimals={false}
+                  tick={{ fontSize: 11, fill: 'oklch(0.65 0.01 260)' }}
+                  axisLine={false}
+                  tickLine={false}
+                />
+                <Tooltip
+                  contentStyle={{
+                    background: 'oklch(0.20 0.014 260)',
+                    border: '1px solid oklch(0.30 0.014 260)',
+                    borderRadius: 8,
+                    fontSize: 12,
+                  }}
+                  labelStyle={{ color: 'oklch(0.93 0.006 260)' }}
+                />
+                <Area
+                  type="monotone"
+                  dataKey="companies"
+                  stroke="var(--primary)"
+                  strokeWidth={2}
+                  fill="url(#fillCompanies)"
+                  name="Companies"
+                />
+                <Area
+                  type="monotone"
+                  dataKey="reports"
+                  stroke={REPORT_STROKE}
+                  strokeWidth={2}
+                  fill="url(#fillReports)"
+                  name="Reports"
+                />
+              </AreaChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+      </section>
 
-        {/* Reports by type */}
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">Reports by Type</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="h-52">
-              {reportTypeData.length > 0 ? (
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={reportTypeData} layout="vertical">
-                    <CartesianGrid strokeDasharray="3 3" stroke="oklch(0.30 0.014 260)" horizontal={false} />
-                    <XAxis type="number" allowDecimals={false} tick={{ fontSize: 11, fill: "oklch(0.65 0.01 260)" }} axisLine={false} tickLine={false} />
-                    <YAxis type="category" dataKey="name" width={80} tick={{ fontSize: 11, fill: "oklch(0.65 0.01 260)" }} axisLine={false} tickLine={false} />
-                    <Tooltip
-                      contentStyle={{ background: "oklch(0.20 0.014 260)", border: "1px solid oklch(0.30 0.014 260)", borderRadius: 8, fontSize: 12 }}
-                    />
-                    <Bar dataKey="count" fill={CHART_COLORS[0]} radius={[0, 4, 4, 0]} name="Count" />
-                  </BarChart>
-                </ResponsiveContainer>
-              ) : (
-                <div className="flex items-center justify-center h-full text-sm text-muted-foreground">No reports generated yet</div>
-              )}
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Charts row 2 */}
-      <div className="grid gap-4 md:grid-cols-3">
-        {/* Engagement types pie */}
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">By Engagement Type</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="h-48">
-              {engagementData.length > 0 ? (
-                <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
-                    <Pie data={engagementData} cx="50%" cy="50%" innerRadius={40} outerRadius={70} paddingAngle={3} dataKey="value">
-                      {engagementData.map((_, i) => <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />)}
-                    </Pie>
-                    <Tooltip
-                      contentStyle={{ background: "oklch(0.20 0.014 260)", border: "1px solid oklch(0.30 0.014 260)", borderRadius: 8, fontSize: 12 }}
-                    />
-                  </PieChart>
-                </ResponsiveContainer>
-              ) : (
-                <div className="flex items-center justify-center h-full text-sm text-muted-foreground">No data</div>
-              )}
-            </div>
-            <div className="flex flex-wrap justify-center gap-3 mt-1">
-              {engagementData.map((d, i) => (
-                <div key={d.name} className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                  <span className="h-2 w-2 rounded-full shrink-0" style={{ background: CHART_COLORS[i % CHART_COLORS.length] }} />
-                  {d.name}
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Company status pie */}
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">Company Status</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="h-48">
-              {statusData.length > 0 ? (
-                <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
-                    <Pie data={statusData} cx="50%" cy="50%" innerRadius={40} outerRadius={70} paddingAngle={3} dataKey="value">
-                      {statusData.map((_, i) => <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />)}
-                    </Pie>
-                    <Tooltip
-                      contentStyle={{ background: "oklch(0.20 0.014 260)", border: "1px solid oklch(0.30 0.014 260)", borderRadius: 8, fontSize: 12 }}
-                    />
-                  </PieChart>
-                </ResponsiveContainer>
-              ) : (
-                <div className="flex items-center justify-center h-full text-sm text-muted-foreground">No data</div>
-              )}
-            </div>
-            <div className="flex flex-wrap justify-center gap-3 mt-1">
-              {statusData.map((d, i) => (
-                <div key={d.name} className="flex items-center gap-1.5 text-xs text-muted-foreground capitalize">
-                  <span className="h-2 w-2 rounded-full shrink-0" style={{ background: CHART_COLORS[i % CHART_COLORS.length] }} />
-                  {d.name}
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Report status */}
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">Report Status</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="h-48">
-              {reportStatusData.length > 0 ? (
-                <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
-                    <Pie data={reportStatusData} cx="50%" cy="50%" innerRadius={40} outerRadius={70} paddingAngle={3} dataKey="value">
-                      {reportStatusData.map((_, i) => <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />)}
-                    </Pie>
-                    <Tooltip
-                      contentStyle={{ background: "oklch(0.20 0.014 260)", border: "1px solid oklch(0.30 0.014 260)", borderRadius: 8, fontSize: 12 }}
-                    />
-                  </PieChart>
-                </ResponsiveContainer>
-              ) : (
-                <div className="flex items-center justify-center h-full text-sm text-muted-foreground">No reports yet</div>
-              )}
-            </div>
-            <div className="flex flex-wrap justify-center gap-3 mt-1">
-              {reportStatusData.map((d, i) => (
-                <div key={d.name} className="flex items-center gap-1.5 text-xs text-muted-foreground capitalize">
-                  <span className="h-2 w-2 rounded-full shrink-0" style={{ background: CHART_COLORS[i % CHART_COLORS.length] }} />
-                  {d.name} ({d.value})
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Recent companies */}
+      {/* Recent engagements */}
       {companies.length > 0 && (
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">Recent Companies</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-2">
-              {companies.slice(0, 5).map((c) => (
-                <div
+        <section>
+          <div className="flex items-center justify-between gap-3">
+            <SectionLabel>Recent engagements</SectionLabel>
+            <button
+              onClick={() => router.push('/companies')}
+              className="group flex shrink-0 cursor-pointer items-center gap-1 text-[11px] font-medium text-muted-foreground transition-colors hover:text-foreground"
+            >
+              View all
+              <ArrowRight className="h-3 w-3 transition-transform group-hover:translate-x-0.5" />
+            </button>
+          </div>
+          <div className="mt-4 divide-y divide-border/40 overflow-hidden rounded-xl border border-border/50 bg-card/30">
+            {companies.slice(0, 5).map((c) => {
+              const docs = docsByCompany[c.id] || [];
+              const ready = !!c.industry && docs.length > 0;
+              return (
+                <button
                   key={c.id}
                   onClick={() => router.push(`/companies/${c.id}`)}
-                  className="flex items-center justify-between rounded-lg border px-4 py-3 cursor-pointer hover:bg-accent/50 transition-colors"
+                  className="group flex w-full cursor-pointer items-center gap-4 px-5 py-3.5 text-left transition-colors hover:bg-muted/25"
                 >
-                  <div className="flex items-center gap-3 min-w-0">
-                    <Building2 className="h-4 w-4 text-muted-foreground shrink-0" />
-                    <div className="min-w-0">
-                      <p className="text-sm font-medium truncate">{c.name}</p>
-                      <p className="text-xs text-muted-foreground">{c.industry || "No industry"}</p>
-                    </div>
+                  <CompanyLogo name={c.name} logoUrl={c.logo_url} size="md" />
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-medium">{c.name}</p>
+                    <p className="truncate text-xs text-muted-foreground">
+                      {c.industry || 'No industry set'} · {docs.length}{' '}
+                      {docs.length === 1 ? 'doc' : 'docs'}
+                    </p>
                   </div>
-                  <div className="flex items-center gap-2 shrink-0">
-                    {c.engagement_type && <Badge variant="outline" className="text-xs">{c.engagement_type.toUpperCase()}</Badge>}
-                    <ArrowRight className="h-4 w-4 text-muted-foreground/40" />
+                  <div className="flex shrink-0 items-center gap-3">
+                    {c.engagement_type && (
+                      <span className="rounded-full border border-border/60 bg-muted/30 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+                        {c.engagement_type}
+                      </span>
+                    )}
+                    <span
+                      className={cn(
+                        'text-[10px] font-semibold uppercase tracking-wider',
+                        ready ? 'text-primary/90' : 'text-amber-400/80',
+                      )}
+                    >
+                      {ready ? 'Ready' : 'Setup'}
+                    </span>
+                    <ArrowRight className="h-4 w-4 text-muted-foreground/40 transition-all group-hover:translate-x-0.5 group-hover:text-foreground/60" />
                   </div>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
+                </button>
+              );
+            })}
+          </div>
+        </section>
       )}
     </div>
+  );
+}
+
+function SectionLabel({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="flex items-center gap-2">
+      <Sparkles className="h-3 w-3 text-primary/60" />
+      <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-muted-foreground">
+        {children}
+      </p>
+      <span className="h-px flex-1 bg-border/40" />
+    </div>
+  );
+}
+
+interface StatCardProps {
+  label: string;
+  value: number;
+  caption: string;
+  icon: LucideIcon;
+  onClick?: () => void;
+  accent?: 'warn';
+}
+
+function StatCard({ label, value, caption, icon: Icon, onClick, accent }: StatCardProps) {
+  const interactive = !!onClick;
+  return (
+    <article
+      onClick={onClick}
+      className={cn(
+        'group relative overflow-hidden rounded-xl border border-border/50 bg-card/30 p-5 transition-all duration-200',
+        interactive &&
+          'cursor-pointer hover:-translate-y-px hover:border-border hover:bg-card/50',
+      )}
+    >
+      <div
+        className={cn(
+          'absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent to-transparent',
+          accent === 'warn' ? 'via-amber-400/50' : 'via-primary/40',
+        )}
+      />
+      {interactive && (
+        <div
+          aria-hidden
+          className="pointer-events-none absolute -right-10 -top-10 h-32 w-32 rounded-full opacity-0 blur-2xl transition-opacity duration-300 group-hover:opacity-100"
+          style={{
+            background:
+              accent === 'warn'
+                ? 'radial-gradient(circle, oklch(0.78 0.15 75 / 0.22), transparent 70%)'
+                : 'radial-gradient(circle, color-mix(in oklch, var(--primary) 22%, transparent), transparent 70%)',
+          }}
+        />
+      )}
+
+      <div className="relative flex items-center justify-between">
+        <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+          {label}
+        </span>
+        <div
+          className={cn(
+            'flex h-7 w-7 items-center justify-center rounded-md ring-1 ring-inset',
+            accent === 'warn'
+              ? 'bg-amber-400/10 ring-amber-400/25'
+              : 'bg-primary/10 ring-primary/20',
+          )}
+        >
+          <Icon
+            className={cn(
+              'h-3.5 w-3.5',
+              accent === 'warn' ? 'text-amber-400' : 'text-primary',
+            )}
+            strokeWidth={2}
+          />
+        </div>
+      </div>
+      <p className="font-numeric relative mt-4 text-4xl font-semibold tracking-tight">
+        {value}
+      </p>
+      <p className="relative mt-1 truncate text-xs text-muted-foreground">{caption}</p>
+    </article>
   );
 }
