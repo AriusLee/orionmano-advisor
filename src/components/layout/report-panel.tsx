@@ -76,7 +76,7 @@ export function ReportPanel({ companyId }: ReportPanelProps) {
 
   useEffect(() => {
     loadReports();
-    const interval = setInterval(loadReports, 3000);
+    const interval = setInterval(loadReports, 10000);
     return () => clearInterval(interval);
   }, [loadReports]);
 

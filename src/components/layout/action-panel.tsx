@@ -144,7 +144,7 @@ export function ActionPanel({ companyId }: ActionPanelProps) {
   useEffect(() => {
     loadReports();
     loadDocs();
-    const interval = setInterval(() => { loadReports(); loadDocs(); }, 3000);
+    const interval = setInterval(() => { loadReports(); loadDocs(); }, 10000);
     return () => clearInterval(interval);
   }, [loadReports, loadDocs]);
 

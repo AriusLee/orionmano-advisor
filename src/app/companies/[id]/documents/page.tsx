@@ -38,7 +38,7 @@ export default function DocumentsPage({ params }: { params: Promise<{ id: string
 
   useEffect(() => {
     loadDocs();
-    const interval = setInterval(loadDocs, 5000);
+    const interval = setInterval(loadDocs, 10000);
     return () => clearInterval(interval);
   }, [loadDocs]);
 

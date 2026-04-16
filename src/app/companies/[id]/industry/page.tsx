@@ -72,7 +72,7 @@ export default function IndustryPage({ params }: { params: Promise<{ id: string 
 
   useEffect(() => {
     loadData();
-    const interval = setInterval(loadData, 3000);
+    const interval = setInterval(loadData, 10000);
     return () => clearInterval(interval);
   }, [loadData]);
 
@@ -92,7 +92,7 @@ export default function IndustryPage({ params }: { params: Promise<{ id: string 
         .catch(() => {});
     };
     fetchDetail();
-    const interval = setInterval(fetchDetail, 2500);
+    const interval = setInterval(fetchDetail, 10000);
     return () => { cancelled = true; clearInterval(interval); };
   }, [id, generatingReport?.id]);
 
