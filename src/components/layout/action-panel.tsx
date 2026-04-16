@@ -46,6 +46,7 @@ interface DocumentItem {
   extraction_status: string;
   extracted_data: Record<string, unknown> | null;
   category?: string | null;
+  categories?: string[] | null;
 }
 
 type ReportType = 'gap_analysis' | 'industry_report' | 'dd_report' | 'valuation_report';
@@ -111,6 +112,7 @@ export function ActionPanel({ companyId }: ActionPanelProps) {
   const [showGenDialog, setShowGenDialog] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [companyTier, setCompanyTier] = useState('standard');
+  const [companyWebsite, setCompanyWebsite] = useState<string | null>(null);
   const [drillType, setDrillType] = useState<ReportType | null>(null);
 
   const pickTab = (t: Tab) => {
@@ -141,8 +143,11 @@ export function ActionPanel({ companyId }: ActionPanelProps) {
   }, [docsLoaded, tabManuallyChosen, docs.length]);
 
   useEffect(() => {
-    apiJson<{ report_tier: string }>(`/companies/${companyId}`)
-      .then(c => setCompanyTier(c.report_tier || 'standard'))
+    apiJson<{ report_tier: string; website: string | null }>(`/companies/${companyId}`)
+      .then(c => {
+        setCompanyTier(c.report_tier || 'standard');
+        setCompanyWebsite(c.website || null);
+      })
       .catch(() => {});
   }, [companyId]);
 
@@ -422,6 +427,7 @@ export function ActionPanel({ companyId }: ActionPanelProps) {
               companyId={companyId}
               documents={docs}
               onChanged={loadDocs}
+              companyWebsite={companyWebsite}
             />
           </div>
         )}

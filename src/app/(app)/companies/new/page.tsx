@@ -10,6 +10,7 @@ import { Label } from '@/components/ui/label';
 import { ArrowLeft, Loader2, Sparkles } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
+import { CompanyCreationOverlay } from '@/components/companies/creation-overlay';
 
 const COMPANY_TYPES = [
   'Private Limited',
@@ -25,6 +26,7 @@ export default function CreateCompanyPage() {
   const { user, loading: authLoading } = useAuth();
   const router = useRouter();
   const [creating, setCreating] = useState(false);
+  const [processingCompanyId, setProcessingCompanyId] = useState<string | null>(null);
   const [form, setForm] = useState({
     legal_name: '',
     name: '',
@@ -66,10 +68,10 @@ export default function CreateCompanyPage() {
       });
 
       toast.success('Company created — documents can be uploaded from the action panel');
-      router.push(`/companies/${company.id}`);
+      // Hand off to the overlay; it polls for logo/website and then redirects.
+      setProcessingCompanyId(company.id);
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : 'Failed to create company');
-    } finally {
       setCreating(false);
     }
   };
@@ -78,6 +80,14 @@ export default function CreateCompanyPage() {
 
   return (
     <div className="min-h-screen bg-background">
+      {processingCompanyId && (
+        <CompanyCreationOverlay
+          companyId={processingCompanyId}
+          initialName={form.name || form.legal_name}
+          hadWebsite={!!form.website.trim()}
+          onComplete={() => router.push(`/companies/${processingCompanyId}`)}
+        />
+      )}
       <div className="mx-auto max-w-2xl px-6 py-10">
         {/* Header */}
         <div className="mb-8 flex items-start gap-3">

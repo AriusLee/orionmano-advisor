@@ -2,7 +2,7 @@
 
 import { useMemo } from 'react';
 import type { LucideIcon } from 'lucide-react';
-import { Check, Circle, Sparkles } from 'lucide-react';
+import { Check, Circle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { CATEGORIES, type ChecklistCategory } from '@/components/documents/document-checklist';
 
@@ -11,12 +11,12 @@ interface EmptyDataDoc {
   filename: string;
   extraction_status: string;
   category?: string | null;
+  categories?: string[] | null;
 }
 
 interface EmptyDataStateProps {
   icon: LucideIcon;
   title: string;
-  tagline?: string;
   description?: string;
   /**
    * Category IDs MUST be uploaded before the analysis can run.
@@ -30,6 +30,16 @@ interface EmptyDataStateProps {
   recommendedCategories?: string[];
   /** Current company documents — used to flip items to "Received". */
   documents: EmptyDataDoc[];
+  /**
+   * When set, the Company Profile slot auto-satisfies from the website
+   * (same behaviour as the action-panel checklist).
+   */
+  companyWebsite?: string | null;
+  /**
+   * Primary CTA rendered below the checklist — typically a "Generate Report"
+   * dialog trigger so the user can proceed even without every doc uploaded.
+   */
+  cta?: React.ReactNode;
 }
 
 const HALO_GRADIENT =
@@ -41,33 +51,48 @@ const RING_GRADIENT =
 const ICON_INNER_GRADIENT =
   'radial-gradient(circle at 30% 20%, color-mix(in oklch, var(--primary) 18%, transparent), transparent 65%)';
 
-type ResolvedItem = ChecklistCategory & { received: boolean; matched: EmptyDataDoc[] };
+type ResolvedItem = ChecklistCategory & {
+  received: boolean;
+  matched: EmptyDataDoc[];
+  fromWebsite?: boolean;
+};
 
 export function EmptyDataState({
   icon: Icon,
   title,
-  tagline = 'Awaiting Documents',
   description,
   requiredCategories,
   recommendedCategories = [],
   documents,
+  companyWebsite,
+  cta,
 }: EmptyDataStateProps) {
+  const hasWebsiteProfile = !!companyWebsite && companyWebsite.trim().length > 0;
   const { requiredItems, recommendedItems } = useMemo(() => {
     const categoryById = new Map<string, ChecklistCategory>(CATEGORIES.map((c) => [c.id, c]));
     const resolve = (ids: string[]): ResolvedItem[] =>
-      ids.map((id) => {
+      ids.map((id): ResolvedItem | null => {
         const meta = categoryById.get(id);
         if (!meta) return null;
-        const matched = documents.filter(
-          (d) => d.extraction_status === 'completed' && (d.category || '').trim() === id,
-        );
-        return { ...meta, received: matched.length > 0, matched };
-      }).filter((x): x is ResolvedItem => !!x);
+        const matched = documents.filter((d) => {
+          if (d.extraction_status !== 'completed') return false;
+          if ((d.category || '').trim() === id) return true;
+          if (Array.isArray(d.categories) && d.categories.includes(id)) return true;
+          return false;
+        });
+        const autoFromWebsite = id === 'company_profile' && hasWebsiteProfile;
+        return {
+          ...meta,
+          received: matched.length > 0 || autoFromWebsite,
+          matched,
+          fromWebsite: autoFromWebsite && matched.length === 0,
+        };
+      }).filter((x): x is ResolvedItem => x !== null);
     return {
       requiredItems: resolve(requiredCategories),
       recommendedItems: resolve(recommendedCategories),
     };
-  }, [requiredCategories, recommendedCategories, documents]);
+  }, [requiredCategories, recommendedCategories, documents, hasWebsiteProfile]);
 
   const receivedCount = requiredItems.filter((i) => i.received).length;
   const totalCount = requiredItems.length;
@@ -113,29 +138,34 @@ export function EmptyDataState({
         </div>
       </div>
 
-      {/* Tagline */}
-      <div className="relative mb-3 flex items-center gap-2">
-        <Sparkles className="h-3 w-3 text-primary/70" />
-        <p className="text-[10px] font-semibold uppercase tracking-[0.32em] text-primary/80">
-          {tagline}
-        </p>
-        <Sparkles className="h-3 w-3 text-primary/70" />
-      </div>
-
       <h2 className="relative mb-3 text-center text-3xl font-semibold tracking-tight leading-tight">
         {title}
       </h2>
 
       {description && (
-        <p className="relative mb-8 max-w-md text-center text-sm leading-relaxed text-muted-foreground">
+        <p className="relative mb-7 max-w-md text-center text-sm leading-relaxed text-muted-foreground">
           {description}
         </p>
       )}
 
-      {/* Required + Recommended document checklists */}
+      {/* Primary CTA — sits above the checklist so the action is the focal point.
+          The orbit ring is a thin conic gradient (one bright primary head)
+          that circulates the button's perimeter to draw the eye. */}
+      {cta && (
+        <div className="relative mb-8 flex justify-center">
+          <div className="relative inline-block">
+            <span
+              aria-hidden
+              className="orbit-ring pointer-events-none absolute -inset-0.5 rounded-[10px] blur-[2px] opacity-90"
+            />
+            <div className="relative">{cta}</div>
+          </div>
+        </div>
+      )}
+
+      {/* Document checklist — suggested inputs that strengthen the analysis */}
       <div className="relative w-full max-w-md space-y-4">
         <ChecklistSection
-          label="Required"
           progress={`${receivedCount} / ${totalCount}`}
           items={requiredItems}
           tone="required"
@@ -155,7 +185,7 @@ export function EmptyDataState({
       {/* Status chip */}
       <div
         className={cn(
-          'relative mt-8 inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-[11px] transition-colors',
+          'relative mt-5 inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-[11px] transition-colors',
           allReceived
             ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-400'
             : 'border-border/60 bg-muted/25 text-muted-foreground',
@@ -176,15 +206,15 @@ export function EmptyDataState({
           />
         </span>
         {allReceived
-          ? 'All required documents received'
-          : `Upload ${totalCount - receivedCount} more to begin — use the Documents tab`}
+          ? 'Full context received — analysis will be most accurate'
+          : `Uploading more context improves the analysis`}
       </div>
     </div>
   );
 }
 
 interface ChecklistSectionProps {
-  label: string;
+  label?: string;
   caption?: string;
   progress?: string;
   items: ResolvedItem[];
@@ -195,26 +225,31 @@ interface ChecklistSectionProps {
 function ChecklistSection({ label, caption, progress, items, tone, delayOffset }: ChecklistSectionProps) {
   if (items.length === 0) return null;
   const isRecommended = tone === 'recommended';
+  const showHeader = !!label || !!caption || !!progress;
   return (
     <div>
-      <div className="mb-2 flex items-center justify-between gap-3 px-1">
-        <div className="flex items-baseline gap-2 min-w-0">
-          <p className={cn(
-            'text-[10px] font-semibold uppercase tracking-[0.18em]',
-            isRecommended ? 'text-muted-foreground/70' : 'text-muted-foreground',
-          )}>
-            {label}
-          </p>
-          {caption && (
-            <p className="text-[10px] text-muted-foreground/50 truncate">{caption}</p>
+      {showHeader && (
+        <div className="mb-2 flex items-center justify-between gap-3 px-1">
+          <div className="flex items-baseline gap-2 min-w-0">
+            {label && (
+              <p className={cn(
+                'text-[10px] font-semibold uppercase tracking-[0.18em]',
+                isRecommended ? 'text-muted-foreground/70' : 'text-muted-foreground',
+              )}>
+                {label}
+              </p>
+            )}
+            {caption && (
+              <p className="text-[10px] text-muted-foreground/50 truncate">{caption}</p>
+            )}
+          </div>
+          {progress && (
+            <p className="shrink-0 text-[10px] font-mono tabular-nums text-muted-foreground">
+              {progress}
+            </p>
           )}
         </div>
-        {progress && (
-          <p className="shrink-0 text-[10px] font-mono tabular-nums text-muted-foreground">
-            {progress}
-          </p>
-        )}
-      </div>
+      )}
       <ul className="space-y-1">
         {items.map((item, i) => {
           const ItemIcon = item.icon;
@@ -274,6 +309,11 @@ function ChecklistSection({ label, caption, progress, items, tone, delayOffset }
                       +{item.matched.length - 1}
                     </span>
                   )}
+                </span>
+              )}
+              {item.fromWebsite && (
+                <span className="shrink-0 rounded-full bg-primary/10 px-1.5 py-px text-[10px] font-medium uppercase tracking-wider text-primary ring-1 ring-inset ring-primary/25">
+                  Website
                 </span>
               )}
             </li>

@@ -1,11 +1,9 @@
 'use client';
 
 import { use, useEffect, useState, useCallback } from 'react';
-import { Globe, Loader2, CheckCircle2, FileText, List } from 'lucide-react';
+import { Globe, Loader2, FileText, List } from 'lucide-react';
 import { apiJson } from '@/lib/api';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
 import { GenerateReportDialog } from '@/components/reports/generate-report-dialog';
 import { SectionPreview } from '@/components/reports/section-preview';
 import { EmptyDataState } from '@/components/empty-data-state';
@@ -17,17 +15,14 @@ interface Document {
   extraction_status: string;
   extracted_data: Record<string, unknown> | null;
   category?: string | null;
+  categories?: string[] | null;
 }
 
-const REQUIRED_DOCS = [
-  'company_profile',
-  'management_accounts',
-];
-
-const RECOMMENDED_DOCS = [
-  'material_contract',
-  'projections',
-];
+interface ReportMeta {
+  id: string;
+  report_type: string;
+  status: string;
+}
 
 interface Company {
   id: string;
@@ -35,7 +30,12 @@ interface Company {
   industry: string | null;
   sub_industry: string | null;
   description: string | null;
+  website: string | null;
 }
+
+const REQUIRED_DOCS = ['company_profile'];
+const RECOMMENDED_DOCS = ['management_accounts', 'material_contract', 'projections'];
+const REPORT_TYPE = 'industry_report';
 
 const ANALYSIS_SECTIONS = [
   'Industry Overview & Market Context',
@@ -55,17 +55,22 @@ export default function IndustryPage({ params }: { params: Promise<{ id: string 
   const { openReports, rightPanel } = useCompanyStore();
   const [company, setCompany] = useState<Company | null>(null);
   const [docs, setDocs] = useState<Document[]>([]);
+  const [reports, setReports] = useState<ReportMeta[]>([]);
   const [loading, setLoading] = useState(true);
 
   const loadData = useCallback(() => {
     Promise.all([
       apiJson<Company>(`/companies/${id}`),
       apiJson<Document[]>(`/companies/${id}/documents`),
-    ]).then(([c, d]) => {
-      setCompany(c);
-      setDocs(d);
-      setLoading(false);
-    }).catch(() => setLoading(false));
+      apiJson<ReportMeta[]>(`/companies/${id}/reports`),
+    ])
+      .then(([c, d, r]) => {
+        setCompany(c);
+        setDocs(d);
+        setReports(r);
+        setLoading(false);
+      })
+      .catch(() => setLoading(false));
   }, [id]);
 
   useEffect(() => {
@@ -75,14 +80,17 @@ export default function IndustryPage({ params }: { params: Promise<{ id: string 
   }, [loadData]);
 
   if (loading) {
-    return <div className="flex items-center justify-center py-20"><Loader2 className="h-8 w-8 animate-spin text-muted-foreground" /></div>;
+    return (
+      <div className="flex items-center justify-center py-20">
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      </div>
+    );
   }
 
-  const extractedDocs = docs.filter(d => d.extraction_status === 'completed' && d.extracted_data);
-  // Ready only when every Required category from the checklist has at least one received doc.
-  // Keeps the page honest — just having `company.industry` set at creation time isn't enough.
-  const isReady = REQUIRED_DOCS.every((catId) =>
-    docs.some((d) => d.extraction_status === 'completed' && (d.category || '').trim() === catId)
+  // Page gates on report existence, not doc availability. Docs gate generation
+  // inside GenerateReportDialog; here we only care whether output is on file.
+  const hasReport = reports.some(
+    (r) => r.report_type === REPORT_TYPE && (r.status === 'draft' || r.status === 'approved'),
   );
 
   return (
@@ -100,94 +108,60 @@ export default function IndustryPage({ params }: { params: Promise<{ id: string 
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-2">
-          {isReady && (
-            <>
-              <GenerateReportDialog companyId={id} moduleType="industry_report" moduleName="Industry Expert" onGenerated={loadData}>
-                <Button variant="outline" size="sm" className="cursor-pointer gap-2">
-                  <FileText className="h-3.5 w-3.5" /> Generate Report
-                </Button>
-              </GenerateReportDialog>
-              <Button
-                variant={rightPanel === 'reports' ? 'secondary' : 'outline'}
-                size="sm" className="cursor-pointer gap-2"
-                onClick={() => openReports('industry_report')}
-              >
-                <List className="h-3.5 w-3.5" /> Reports
+        {hasReport && (
+          <div className="flex items-center gap-2">
+            <GenerateReportDialog
+              companyId={id}
+              moduleType={REPORT_TYPE}
+              moduleName="Industry Expert"
+              onGenerated={loadData}
+            >
+              <Button variant="outline" size="sm" className="cursor-pointer gap-2">
+                <FileText className="h-3.5 w-3.5" /> Regenerate
               </Button>
-            </>
-          )}
-        </div>
+            </GenerateReportDialog>
+            <Button
+              variant={rightPanel === 'reports' ? 'secondary' : 'outline'}
+              size="sm"
+              className="cursor-pointer gap-2"
+              onClick={() => openReports(REPORT_TYPE)}
+            >
+              <List className="h-3.5 w-3.5" /> Reports
+            </Button>
+          </div>
+        )}
       </div>
 
-      {/* Empty state — polished onboarding view with auto-checklist */}
-      {!isReady && (
+      {!hasReport ? (
         <EmptyDataState
           icon={Globe}
           title="Industry Expert Analysis"
-          tagline="Awaiting Documents"
           description="Upload company context so our market research agent can position you against the right peers, segments, and growth drivers."
           requiredCategories={REQUIRED_DOCS}
           recommendedCategories={RECOMMENDED_DOCS}
           documents={docs}
-        />
-      )}
-
-      {/* Ready state — real company context + planned report outline + generate CTA */}
-      {isReady && (
-        <>
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-base">
-                <CheckCircle2 className="h-5 w-5 text-emerald-500" /> Context Ready
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <p className="text-sm text-muted-foreground">
-                Company context is available. Generate the Industry Expert Report to produce market sizing, competitive positioning, and strategic recommendations grounded in your uploaded materials.
-              </p>
-              {company?.industry && (
-                <div className="rounded-lg border p-4">
-                  <h3 className="text-sm font-semibold mb-2">Company Context</h3>
-                  <dl className="grid gap-2 sm:grid-cols-2 text-sm">
-                    <div><dt className="text-muted-foreground">Industry</dt><dd className="font-medium">{company.industry}</dd></div>
-                    {company.sub_industry && <div><dt className="text-muted-foreground">Sub-industry</dt><dd className="font-medium">{company.sub_industry}</dd></div>}
-                    {company.description && <div className="sm:col-span-2"><dt className="text-muted-foreground">Description</dt><dd className="font-medium">{company.description}</dd></div>}
-                  </dl>
-                </div>
-              )}
-              {extractedDocs.length > 0 && (
-                <div className="rounded-lg border p-4">
-                  <h3 className="text-sm font-semibold mb-2">Data Sources ({extractedDocs.length})</h3>
-                  <div className="space-y-2">
-                    {extractedDocs.map(d => (
-                      <div key={d.id} className="flex items-center justify-between text-sm">
-                        <span className="flex items-center gap-2"><FileText className="h-4 w-4 text-primary/60" /> {d.filename}</span>
-                        <Badge variant="default">Extracted</Badge>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-
-          <SectionPreview
-            companyId={id}
-            reportType="industry_report"
-            sections={ANALYSIS_SECTIONS}
-            icon={<Globe className="h-4 w-4 text-primary/60 shrink-0" />}
-          />
-
-          <div className="flex gap-2">
-            <GenerateReportDialog companyId={id} moduleType="industry_report" moduleName="Industry Expert" onGenerated={loadData}>
-              <Button variant="outline" className="cursor-pointer gap-2"><FileText className="h-4 w-4" /> Generate Report</Button>
+          companyWebsite={company?.website}
+          cta={
+            <GenerateReportDialog
+              companyId={id}
+              moduleType={REPORT_TYPE}
+              moduleName="Industry Expert"
+              onGenerated={loadData}
+            >
+              <button className="group relative inline-flex h-11 items-center gap-2 rounded-lg bg-primary px-6 text-sm font-medium text-primary-foreground shadow-[0_4px_14px_-4px_oklch(from_var(--primary)_l_c_h_/_0.5),inset_0_1px_0_oklch(1_0_0/0.2)] transition-all duration-150 cursor-pointer hover:brightness-110 hover:shadow-[0_6px_20px_-4px_oklch(from_var(--primary)_l_c_h_/_0.6),inset_0_1px_0_oklch(1_0_0/0.25)] active:brightness-95 active:translate-y-px">
+                <FileText className="h-4 w-4" strokeWidth={2.25} />
+                Generate Report
+              </button>
             </GenerateReportDialog>
-            <Button variant={rightPanel === 'reports' ? 'secondary' : 'outline'} className="cursor-pointer gap-2" onClick={() => openReports('industry_report')}>
-              <List className="h-4 w-4" /> View Reports
-            </Button>
-          </div>
-        </>
+          }
+        />
+      ) : (
+        <SectionPreview
+          companyId={id}
+          reportType={REPORT_TYPE}
+          sections={ANALYSIS_SECTIONS}
+          icon={<Globe className="h-4 w-4 text-primary/60 shrink-0" />}
+        />
       )}
     </div>
   );
