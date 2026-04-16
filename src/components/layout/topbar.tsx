@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { usePathname } from 'next/navigation';
 import { Menu, LogOut, User, MessageSquare } from 'lucide-react';
 import { useAuth } from '@/lib/auth-context';
 import { Button } from '@/components/ui/button';
@@ -8,6 +9,26 @@ import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { useCompanyStore } from '@/stores/company-store';
 import { CompanySelector } from '@/components/layout/company-selector';
+
+const MVPI_MODULE_SEGMENTS = new Set([
+  'gap-analysis',
+  'kickoff',
+  'decks',
+  'teaser',
+  'ir-releases',
+  'engagement-letter',
+]);
+
+function brandForPath(pathname: string | null, companyId?: string): string {
+  if (companyId && pathname) {
+    const prefix = `/companies/${companyId}/`;
+    if (pathname.startsWith(prefix)) {
+      const segment = pathname.slice(prefix.length).split('/')[0];
+      if (MVPI_MODULE_SEGMENTS.has(segment)) return 'MVPI';
+    }
+  }
+  return 'ORIONMANO';
+}
 
 interface TopbarProps {
   onMenuClick: () => void;
@@ -18,9 +39,12 @@ interface TopbarProps {
 export function Topbar({ onMenuClick, companyId, companyName }: TopbarProps) {
   const { user, logout } = useAuth();
   const { rightPanel, toggleChat } = useCompanyStore();
+  const pathname = usePathname();
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => { setMounted(true); }, []);
+
+  const brandName = brandForPath(pathname, companyId);
 
   const initials = user?.name
     ? user.name.split(' ').map((n) => n[0]).join('').toUpperCase().slice(0, 2)
@@ -39,7 +63,7 @@ export function Topbar({ onMenuClick, companyId, companyName }: TopbarProps) {
 
       {/* Left: brand + company selector */}
       <div className="flex items-center gap-2">
-        <h1 className="text-sm font-bold tracking-wider">ORIONMANO</h1>
+        <h1 className="text-sm font-bold tracking-wider">{brandName}</h1>
         {companyId && <CompanySelector companyId={companyId} companyName={companyName} />}
       </div>
 
