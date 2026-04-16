@@ -15,6 +15,7 @@ import {
   Globe,
   FileSearch,
   BarChart3,
+  Trash2,
   type LucideIcon,
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
@@ -113,6 +114,7 @@ export function ActionPanel({ companyId }: ActionPanelProps) {
   const [companyTier, setCompanyTier] = useState('standard');
   const [companyWebsite, setCompanyWebsite] = useState<string | null>(null);
   const [drillType, setDrillType] = useState<ReportType | null>(null);
+  const [deletingReportId, setDeletingReportId] = useState<string | null>(null);
 
   const loadReports = useCallback(() => {
     apiJson<ReportItem[]>(`/companies/${companyId}/reports`)
@@ -176,6 +178,20 @@ export function ActionPanel({ companyId }: ActionPanelProps) {
       toast.error('Failed to generate report');
     } finally {
       setGenerating(false);
+    }
+  };
+
+  const handleDeleteReport = async (reportId: string, label: string) => {
+    if (!confirm(`Delete this ${label.toLowerCase()}? This cannot be undone.`)) return;
+    setDeletingReportId(reportId);
+    try {
+      await apiJson(`/companies/${companyId}/reports/${reportId}`, { method: 'DELETE' });
+      setReports((prev) => prev.filter((r) => r.id !== reportId));
+      toast.success('Report deleted');
+    } catch {
+      toast.error('Failed to delete report');
+    } finally {
+      setDeletingReportId(null);
     }
   };
 
@@ -363,14 +379,29 @@ export function ActionPanel({ companyId }: ActionPanelProps) {
                         const isGenerating = report.status === 'generating' || report.status === 'pending';
                         const tier = report.tier || 'standard';
                         const RptTierIcon = TIER_ICONS[tier] || Star;
+                        const isDeleting = deletingReportId === report.id;
+                        const navigate = () => {
+                          if (isGenerating || isDeleting) return;
+                          router.push(`/companies/${companyId}/reports/${report.id}`);
+                        };
                         return (
-                          <button
+                          <div
                             key={report.id}
-                            onClick={() => !isGenerating && router.push(`/companies/${companyId}/reports/${report.id}`)}
-                            disabled={isGenerating}
+                            role="button"
+                            tabIndex={isGenerating || isDeleting ? -1 : 0}
+                            onClick={navigate}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter' || e.key === ' ') {
+                                e.preventDefault();
+                                navigate();
+                              }
+                            }}
+                            aria-disabled={isGenerating || isDeleting}
                             className={cn(
                               'w-full flex items-start gap-3 rounded-lg px-3 py-2.5 text-left transition-colors group',
-                              isGenerating ? 'opacity-70 cursor-wait' : 'hover:bg-muted/50 cursor-pointer'
+                              isGenerating || isDeleting
+                                ? 'opacity-70 cursor-wait'
+                                : 'hover:bg-muted/50 cursor-pointer'
                             )}
                           >
                             <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-primary/10 ring-1 ring-inset ring-primary/20 mt-0.5">
@@ -396,8 +427,28 @@ export function ActionPanel({ companyId }: ActionPanelProps) {
                                 </p>
                               )}
                             </div>
-                            {!isGenerating && <ChevronRight className="h-4 w-4 text-muted-foreground/40 mt-1 opacity-0 group-hover:opacity-100 transition-opacity" />}
-                          </button>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleDeleteReport(report.id, drillConfig?.label ?? 'report');
+                              }}
+                              disabled={isDeleting}
+                              aria-label="Delete report"
+                              className={cn(
+                                'mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground/50 transition-all cursor-pointer',
+                                'opacity-0 group-hover:opacity-100 focus-visible:opacity-100',
+                                'hover:bg-destructive/10 hover:text-destructive',
+                                isDeleting && 'opacity-100'
+                              )}
+                            >
+                              {isDeleting ? (
+                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                              ) : (
+                                <Trash2 className="h-3.5 w-3.5" />
+                              )}
+                            </button>
+                          </div>
                         );
                       })}
                     </div>
