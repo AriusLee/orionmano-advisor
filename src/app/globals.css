@@ -201,10 +201,16 @@ body::after {
   100% { background-position: 48px 48px; }
 }
 
+@keyframes om-shimmer-x {
+  0%   { transform: translateX(-120%); }
+  100% { transform: translateX(420%); }
+}
+
 .animate-spin-slow  { animation: om-spin-slow 8s linear infinite; }
 .animate-halo       { animation: om-halo-breathe 5s ease-in-out infinite; }
 .animate-float      { animation: om-float 4s ease-in-out infinite; }
 .animate-grid-drift { animation: om-grid-drift 20s linear infinite; }
+.animate-shimmer-x  { animation: om-shimmer-x 1.8s ease-in-out infinite; }
 
 /* -------------------------------------------------------------------- */
 /* Orbit ring: a bright primary "comet" that circulates around an       */

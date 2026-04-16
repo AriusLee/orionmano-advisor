@@ -2,11 +2,13 @@
 
 import { use, useEffect, useState, useCallback } from 'react';
 import { Globe, Loader2, FileText, List } from 'lucide-react';
+import { toast } from 'sonner';
 import { apiJson } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { GenerateReportDialog } from '@/components/reports/generate-report-dialog';
 import { SectionPreview } from '@/components/reports/section-preview';
 import { EmptyDataState } from '@/components/empty-data-state';
+import { GeneratingState } from '@/components/generating-state';
 import { useCompanyStore } from '@/stores/company-store';
 
 interface Document {
@@ -22,6 +24,15 @@ interface ReportMeta {
   id: string;
   report_type: string;
   status: string;
+  progress_message?: string | null;
+  created_at: string;
+}
+
+interface ReportDetail {
+  id: string;
+  status: string;
+  progress_message?: string | null;
+  sections: Array<{ id: string }>;
 }
 
 interface Company {
@@ -31,6 +42,7 @@ interface Company {
   sub_industry: string | null;
   description: string | null;
   website: string | null;
+  report_tier: string;
 }
 
 const REQUIRED_DOCS = ['company_profile'];
@@ -57,6 +69,8 @@ export default function IndustryPage({ params }: { params: Promise<{ id: string 
   const [docs, setDocs] = useState<Document[]>([]);
   const [reports, setReports] = useState<ReportMeta[]>([]);
   const [loading, setLoading] = useState(true);
+  const [starting, setStarting] = useState(false);
+  const [sectionsGenerated, setSectionsGenerated] = useState(0);
 
   const loadData = useCallback(() => {
     Promise.all([
@@ -75,9 +89,53 @@ export default function IndustryPage({ params }: { params: Promise<{ id: string 
 
   useEffect(() => {
     loadData();
-    const interval = setInterval(loadData, 5000);
+    const interval = setInterval(loadData, 3000);
     return () => clearInterval(interval);
   }, [loadData]);
+
+  const generatingReport = reports.find(
+    (r) => r.report_type === REPORT_TYPE && (r.status === 'pending' || r.status === 'generating'),
+  );
+
+  useEffect(() => {
+    if (!generatingReport) {
+      setSectionsGenerated(0);
+      return;
+    }
+    let cancelled = false;
+    const fetchDetail = () => {
+      apiJson<ReportDetail>(`/companies/${id}/reports/${generatingReport.id}`)
+        .then((d) => { if (!cancelled) setSectionsGenerated(d.sections?.length ?? 0); })
+        .catch(() => {});
+    };
+    fetchDetail();
+    const interval = setInterval(fetchDetail, 2500);
+    return () => { cancelled = true; clearInterval(interval); };
+  }, [id, generatingReport?.id]);
+
+  const hasReport = reports.some(
+    (r) => r.report_type === REPORT_TYPE && (r.status === 'draft' || r.status === 'approved'),
+  );
+
+  const handleGenerate = async () => {
+    if (!company) return;
+    setStarting(true);
+    try {
+      await apiJson(`/companies/${id}/reports/generate`, {
+        method: 'POST',
+        body: JSON.stringify({ report_type: REPORT_TYPE, tier: company.report_tier || 'standard' }),
+      });
+      toast.success('Industry expert generation started');
+      loadData();
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : 'Failed to start generation');
+      setStarting(false);
+    }
+  };
+
+  useEffect(() => {
+    if (starting && (generatingReport || hasReport)) setStarting(false);
+  }, [starting, generatingReport, hasReport]);
 
   if (loading) {
     return (
@@ -86,12 +144,6 @@ export default function IndustryPage({ params }: { params: Promise<{ id: string 
       </div>
     );
   }
-
-  // Page gates on report existence, not doc availability. Docs gate generation
-  // inside GenerateReportDialog; here we only care whether output is on file.
-  const hasReport = reports.some(
-    (r) => r.report_type === REPORT_TYPE && (r.status === 'draft' || r.status === 'approved'),
-  );
 
   return (
     <div className="space-y-6">
@@ -132,7 +184,22 @@ export default function IndustryPage({ params }: { params: Promise<{ id: string 
         )}
       </div>
 
-      {!hasReport ? (
+      {hasReport ? (
+        <SectionPreview
+          companyId={id}
+          reportType={REPORT_TYPE}
+          sections={ANALYSIS_SECTIONS}
+          icon={<Globe className="h-4 w-4 text-primary/60 shrink-0" />}
+        />
+      ) : generatingReport || starting ? (
+        <GeneratingState
+          icon={Globe}
+          title="Industry Expert Analysis"
+          progressMessage={generatingReport?.progress_message}
+          startedAt={generatingReport?.created_at ?? null}
+          sectionsGenerated={sectionsGenerated}
+        />
+      ) : (
         <EmptyDataState
           icon={Globe}
           title="Industry Expert Analysis"
@@ -142,25 +209,15 @@ export default function IndustryPage({ params }: { params: Promise<{ id: string 
           documents={docs}
           companyWebsite={company?.website}
           cta={
-            <GenerateReportDialog
-              companyId={id}
-              moduleType={REPORT_TYPE}
-              moduleName="Industry Expert"
-              onGenerated={loadData}
+            <button
+              onClick={handleGenerate}
+              disabled={starting}
+              className="group relative inline-flex h-11 items-center gap-2 rounded-lg bg-primary px-6 text-sm font-medium text-primary-foreground shadow-[0_4px_14px_-4px_oklch(from_var(--primary)_l_c_h_/_0.5),inset_0_1px_0_oklch(1_0_0/0.2)] transition-all duration-150 cursor-pointer hover:brightness-110 hover:shadow-[0_6px_20px_-4px_oklch(from_var(--primary)_l_c_h_/_0.6),inset_0_1px_0_oklch(1_0_0/0.25)] active:brightness-95 active:translate-y-px disabled:opacity-70 disabled:cursor-wait"
             >
-              <button className="group relative inline-flex h-11 items-center gap-2 rounded-lg bg-primary px-6 text-sm font-medium text-primary-foreground shadow-[0_4px_14px_-4px_oklch(from_var(--primary)_l_c_h_/_0.5),inset_0_1px_0_oklch(1_0_0/0.2)] transition-all duration-150 cursor-pointer hover:brightness-110 hover:shadow-[0_6px_20px_-4px_oklch(from_var(--primary)_l_c_h_/_0.6),inset_0_1px_0_oklch(1_0_0/0.25)] active:brightness-95 active:translate-y-px">
-                <FileText className="h-4 w-4" strokeWidth={2.25} />
-                Generate Report
-              </button>
-            </GenerateReportDialog>
+              {starting ? <Loader2 className="h-4 w-4 animate-spin" strokeWidth={2.25} /> : <FileText className="h-4 w-4" strokeWidth={2.25} />}
+              {starting ? 'Starting…' : 'Generate Report'}
+            </button>
           }
-        />
-      ) : (
-        <SectionPreview
-          companyId={id}
-          reportType={REPORT_TYPE}
-          sections={ANALYSIS_SECTIONS}
-          icon={<Globe className="h-4 w-4 text-primary/60 shrink-0" />}
         />
       )}
     </div>

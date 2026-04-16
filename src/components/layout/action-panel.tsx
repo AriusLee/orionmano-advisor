@@ -104,7 +104,6 @@ export function ActionPanel({ companyId }: ActionPanelProps) {
   const { reportModuleFilter } = useCompanyStore();
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<Tab>('documents');
-  const [tabManuallyChosen, setTabManuallyChosen] = useState(false);
   const [reports, setReports] = useState<ReportItem[]>([]);
   const [docs, setDocs] = useState<DocumentItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -114,11 +113,6 @@ export function ActionPanel({ companyId }: ActionPanelProps) {
   const [companyTier, setCompanyTier] = useState('standard');
   const [companyWebsite, setCompanyWebsite] = useState<string | null>(null);
   const [drillType, setDrillType] = useState<ReportType | null>(null);
-
-  const pickTab = (t: Tab) => {
-    setActiveTab(t);
-    setTabManuallyChosen(true);
-  };
 
   const loadReports = useCallback(() => {
     apiJson<ReportItem[]>(`/companies/${companyId}/reports`)
@@ -135,12 +129,6 @@ export function ActionPanel({ companyId }: ActionPanelProps) {
       })
       .catch(() => setDocsLoaded(true));
   }, [companyId]);
-
-  // First-load heuristic: if user has docs, show Reports; if empty, keep Documents tab active.
-  useEffect(() => {
-    if (!docsLoaded || tabManuallyChosen) return;
-    if (docs.length > 0) setActiveTab('reports');
-  }, [docsLoaded, tabManuallyChosen, docs.length]);
 
   useEffect(() => {
     apiJson<{ report_tier: string; website: string | null }>(`/companies/${companyId}`)
@@ -200,7 +188,7 @@ export function ActionPanel({ companyId }: ActionPanelProps) {
       {/* ─── HEADER: Tab nav ─── */}
       <div className={cn('absolute top-0 left-0 right-0 z-10 flex border-b bg-background', HEADER_H)}>
         <button
-          onClick={() => pickTab('reports')}
+          onClick={() => setActiveTab('reports')}
           className={cn(
             'flex-1 flex items-center justify-center gap-1.5 text-xs font-medium transition-colors cursor-pointer border-b-2',
             activeTab === 'reports'
@@ -217,7 +205,7 @@ export function ActionPanel({ companyId }: ActionPanelProps) {
           )}
         </button>
         <button
-          onClick={() => pickTab('documents')}
+          onClick={() => setActiveTab('documents')}
           className={cn(
             'relative flex-1 flex items-center justify-center gap-1.5 text-xs font-medium transition-colors cursor-pointer border-b-2',
             activeTab === 'documents'

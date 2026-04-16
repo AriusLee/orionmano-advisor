@@ -20,6 +20,9 @@ import {
   ArrowDownRight,
   Percent,
   Wallet,
+  Users,
+  Network,
+  UserCircle2,
 } from 'lucide-react';
 import {
   BarChart,
@@ -76,10 +79,27 @@ interface TimelineItem {
   timestamp: string | null;
 }
 
+interface Shareholder {
+  name: string;
+  shares: number | null;
+  percentage: number | null;
+  source: string;
+}
+
+interface Personnel {
+  name: string;
+  title: string | null;
+  background: string | null;
+  source: string;
+}
+
 interface Intelligence {
   risk_flags: RiskFlag[];
   financial_snapshot: Record<string, unknown> | null;
   cross_reference: CrossRef;
+  shareholders?: Shareholder[];
+  key_personnel?: Personnel[];
+  org_chart_summary?: string | null;
   timeline: TimelineItem[];
 }
 
@@ -609,6 +629,24 @@ export default function CompanyOverview({
         </section>
       )}
 
+      {/* Corporate Structure — shareholders, directors, org chart narrative */}
+      {intel && ((intel.shareholders?.length ?? 0) > 0 || (intel.key_personnel?.length ?? 0) > 0 || intel.org_chart_summary) && (
+        <section>
+          <SectionLabel>Corporate structure</SectionLabel>
+          <div className="mt-4 grid gap-4 md:grid-cols-2">
+            {(intel.shareholders?.length ?? 0) > 0 && (
+              <ShareholdersCard shareholders={intel.shareholders!} />
+            )}
+            {(intel.key_personnel?.length ?? 0) > 0 && (
+              <PersonnelCard personnel={intel.key_personnel!} />
+            )}
+            {intel.org_chart_summary && (
+              <OrgChartNarrative summary={intel.org_chart_summary} />
+            )}
+          </div>
+        </section>
+      )}
+
       {/* Intelligence */}
       <section>
         <SectionLabel>Intelligence</SectionLabel>
@@ -1011,6 +1049,127 @@ function MiniStat({ label, value, tone }: MiniStatProps) {
       <div className="text-[10px] uppercase tracking-wider text-muted-foreground">
         {label}
       </div>
+    </div>
+  );
+}
+
+function ShareholdersCard({ shareholders }: { shareholders: Shareholder[] }) {
+  const maxPct = Math.max(...shareholders.map((s) => s.percentage ?? 0), 1);
+  return (
+    <div className="relative overflow-hidden rounded-xl border border-border/50 bg-card/30 p-6">
+      <div className="mb-4 flex items-center justify-between">
+        <div className="flex items-center gap-2.5">
+          <div className="flex h-7 w-7 items-center justify-center rounded-md bg-primary/10 ring-1 ring-inset ring-primary/20">
+            <Network className="h-3.5 w-3.5 text-primary" />
+          </div>
+          <h3 className="text-sm font-semibold">Shareholders</h3>
+        </div>
+        <span className="rounded-full bg-muted/40 px-2 py-0.5 text-[10px] font-semibold text-muted-foreground">
+          {shareholders.length}
+        </span>
+      </div>
+      <ul className="space-y-2">
+        {shareholders.map((s, i) => {
+          const pct = s.percentage ?? null;
+          const widthPct = pct !== null ? Math.max(2, (pct / maxPct) * 100) : 0;
+          return (
+            <li key={`${s.name}-${i}`} className="relative overflow-hidden rounded-lg border border-border/40 bg-muted/15 px-3 py-2.5">
+              {pct !== null && (
+                <div
+                  aria-hidden
+                  className="pointer-events-none absolute inset-y-0 left-0 bg-primary/10"
+                  style={{ width: `${widthPct}%` }}
+                />
+              )}
+              <div className="relative flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-sm font-medium truncate">{s.name}</p>
+                  <p className="text-[10px] uppercase tracking-wider text-muted-foreground/70 truncate">
+                    {s.source}
+                  </p>
+                </div>
+                <div className="flex shrink-0 flex-col items-end">
+                  {pct !== null && (
+                    <span className="font-numeric text-sm font-semibold text-primary">
+                      {pct.toFixed(2)}%
+                    </span>
+                  )}
+                  {s.shares !== null && s.shares !== undefined && (
+                    <span className="text-[10px] text-muted-foreground tabular-nums">
+                      {s.shares.toLocaleString()} shares
+                    </span>
+                  )}
+                </div>
+              </div>
+            </li>
+          );
+        })}
+      </ul>
+    </div>
+  );
+}
+
+function PersonnelCard({ personnel }: { personnel: Personnel[] }) {
+  return (
+    <div className="relative overflow-hidden rounded-xl border border-border/50 bg-card/30 p-6">
+      <div className="mb-4 flex items-center justify-between">
+        <div className="flex items-center gap-2.5">
+          <div className="flex h-7 w-7 items-center justify-center rounded-md bg-primary/10 ring-1 ring-inset ring-primary/20">
+            <Users className="h-3.5 w-3.5 text-primary" />
+          </div>
+          <h3 className="text-sm font-semibold">Directors &amp; Key Personnel</h3>
+        </div>
+        <span className="rounded-full bg-muted/40 px-2 py-0.5 text-[10px] font-semibold text-muted-foreground">
+          {personnel.length}
+        </span>
+      </div>
+      <ul className="space-y-2">
+        {personnel.map((p, i) => (
+          <li
+            key={`${p.name}-${i}`}
+            className="flex items-start gap-3 rounded-lg border border-border/40 bg-muted/15 px-3 py-2.5"
+          >
+            <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary/10 ring-1 ring-inset ring-primary/20">
+              <UserCircle2 className="h-3.5 w-3.5 text-primary/80" strokeWidth={1.75} />
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-sm font-medium truncate">{p.name}</p>
+                {p.title && (
+                  <span className="shrink-0 rounded-full bg-primary/10 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider text-primary ring-1 ring-inset ring-primary/25">
+                    {p.title}
+                  </span>
+                )}
+              </div>
+              {p.background && (
+                <p className="mt-0.5 text-xs text-muted-foreground line-clamp-2">
+                  {p.background}
+                </p>
+              )}
+              <p className="mt-0.5 text-[10px] uppercase tracking-wider text-muted-foreground/60 truncate">
+                {p.source}
+              </p>
+            </div>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+function OrgChartNarrative({ summary }: { summary: string }) {
+  return (
+    <div className="relative overflow-hidden rounded-xl border border-border/50 bg-card/30 p-6 md:col-span-2">
+      <div className="mb-3 flex items-center gap-2.5">
+        <div className="flex h-7 w-7 items-center justify-center rounded-md bg-primary/10 ring-1 ring-inset ring-primary/20">
+          <Network className="h-3.5 w-3.5 text-primary" />
+        </div>
+        <h3 className="text-sm font-semibold">Org Chart Summary</h3>
+        <span className="rounded-full bg-muted/40 px-2 py-0.5 text-[10px] font-semibold text-muted-foreground">
+          From uploaded diagram
+        </span>
+      </div>
+      <p className="max-w-3xl text-[13px] leading-relaxed text-foreground/85">{summary}</p>
     </div>
   );
 }
