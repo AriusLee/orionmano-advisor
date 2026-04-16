@@ -82,7 +82,7 @@ export default function DDPage({ params }: { params: Promise<{ id: string }> }) 
             <FileSearch className="h-6 w-6 text-primary" />
           </div>
           <div>
-            <h1 className="text-2xl font-bold tracking-tight">Due Diligence</h1>
+            <h1 className="text-2xl font-semibold tracking-tight">Due Diligence</h1>
             <p className="text-sm text-muted-foreground">
               Financial DD assessment — analytical review, risk identification, internal controls
             </p>

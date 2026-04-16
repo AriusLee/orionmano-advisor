@@ -112,7 +112,7 @@ export default function CreateCompanyPage() {
             <ArrowLeft className="h-5 w-5" />
           </Button>
           <div>
-            <h1 className="text-2xl font-bold tracking-tight">Create Company</h1>
+            <h1 className="text-2xl font-semibold tracking-tight">Create Company</h1>
             <p className="text-sm text-muted-foreground">
               Add a new company to begin advisory analysis.
             </p>

@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { apiJson } from '@/lib/api';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Loader2, Shield, DollarSign, Calendar, AlertTriangle, Clock, CheckCircle2, XCircle, HelpCircle } from 'lucide-react';
@@ -211,11 +212,49 @@ function parseDependencies(content: string): string[] {
 // ─── Rating config ───
 
 const RATING_CONFIG = {
-  ready: { bg: 'bg-emerald-500/10', border: 'border-emerald-500/30', text: 'text-emerald-400', icon: CheckCircle2, label: 'Ready' },
-  conditional: { bg: 'bg-amber-500/10', border: 'border-amber-500/30', text: 'text-amber-400', icon: Clock, label: 'Conditional' },
-  not_ready: { bg: 'bg-red-500/10', border: 'border-red-500/30', text: 'text-red-400', icon: XCircle, label: 'Not Ready' },
-  info_required: { bg: 'bg-slate-500/10', border: 'border-slate-500/30', text: 'text-slate-400', icon: HelpCircle, label: 'Info Required' },
+  ready:         { rail: 'bg-emerald-500', bar: 'bg-gradient-to-r from-emerald-600/75 via-emerald-500/85 to-emerald-400/95', barRing: 'ring-emerald-400/35', badgeBg: 'bg-emerald-500/10', badgeText: 'text-emerald-400', badgeRing: 'ring-emerald-500/25', icon: CheckCircle2, label: 'Ready' },
+  conditional:   { rail: 'bg-amber-500',   bar: 'bg-gradient-to-r from-amber-600/75 via-amber-500/85 to-amber-300/95',     barRing: 'ring-amber-400/35',   badgeBg: 'bg-amber-500/10',   badgeText: 'text-amber-400',   badgeRing: 'ring-amber-500/25',   icon: Clock,        label: 'Conditional' },
+  not_ready:     { rail: 'bg-red-500',     bar: 'bg-gradient-to-r from-red-600/75 via-red-500/85 to-red-400/95',           barRing: 'ring-red-400/35',     badgeBg: 'bg-red-500/10',     badgeText: 'text-red-400',     badgeRing: 'ring-red-500/25',     icon: XCircle,      label: 'Not Ready' },
+  info_required: { rail: 'bg-slate-400',   bar: 'bg-gradient-to-r from-slate-600/70 via-slate-500/80 to-slate-400/90',     barRing: 'ring-slate-400/35',   badgeBg: 'bg-slate-500/10',   badgeText: 'text-slate-300',   badgeRing: 'ring-slate-500/25',   icon: HelpCircle,   label: 'Info Required' },
 };
+
+/**
+ * Keyword map used to align a Gantt workstream name with its scorecard dimension
+ * so the bar inherits the dimension's severity color. Keywords are lowercased
+ * and stripped of punctuation before comparison.
+ */
+const DIMENSION_KEYWORDS: Array<{ match: RegExp; dimension: RegExp }> = [
+  { match: /\b(audit|pcaob|sox|control)/i,                      dimension: /audit|accounting/i },
+  { match: /\b(governance|board|committee)/i,                   dimension: /governance|board/i },
+  { match: /\b(legal|regulat|compliance)/i,                     dimension: /legal|regulat/i },
+  { match: /\b(restructur|corporate|entity|cap[\s-]?table)/i,   dimension: /corporate|structure/i },
+  { match: /\b(cap[\s-]?raise|capital|fundrais|equity|financ)/i,dimension: /financial|position/i },
+  { match: /\b(report|disclosure|ifrs|sec filing|20-?f|6-?k|fin systems|ir infrastructure)/i, dimension: /reporting|disclosure/i },
+  { match: /\b(market|ipo materials|roadshow|prospectus|investor relations|ir\b)/i,           dimension: /market|readiness/i },
+  { match: /\b(deal|underwriter|transaction|pricing|syndicate)/i,                             dimension: /transaction|feasibility/i },
+];
+
+function matchScorecardForWorkstream(name: string, ratings: ScorecardItem[]): ScorecardItem | null {
+  if (!name || ratings.length === 0) return null;
+
+  // First: keyword-based routing (handles abbrev like "SOX/Controls" → Audit)
+  for (const entry of DIMENSION_KEYWORDS) {
+    if (entry.match.test(name)) {
+      const hit = ratings.find(r => entry.dimension.test(r.dimension));
+      if (hit) return hit;
+    }
+  }
+
+  // Fallback: direct token overlap against dimension names
+  const nameTokens = name.toLowerCase().split(/[^a-z0-9]+/).filter(t => t.length > 2);
+  let best: { item: ScorecardItem; score: number } | null = null;
+  for (const r of ratings) {
+    const dimTokens = r.dimension.toLowerCase().split(/[^a-z0-9]+/).filter(t => t.length > 2);
+    const overlap = nameTokens.filter(t => dimTokens.some(d => d.startsWith(t) || t.startsWith(d))).length;
+    if (overlap > 0 && (!best || overlap > best.score)) best = { item: r, score: overlap };
+  }
+  return best?.item ?? null;
+}
 
 const STATUS_COLORS: Record<string, string> = {
   '🟢': 'bg-emerald-500',
@@ -224,17 +263,28 @@ const STATUS_COLORS: Record<string, string> = {
   '⚪': 'bg-slate-500',
 };
 
-const PHASE_BG = ['bg-red-500/8', 'bg-amber-500/8', 'bg-blue-500/8', 'bg-emerald-500/8'];
-const PHASE_HEADER_COLOR = ['text-red-400', 'text-amber-400', 'text-blue-400', 'text-emerald-400'];
 const PHASE_LABELS = ['Immediate', 'Pre-filing', 'Filing', 'Pre-roadshow'];
 const PHASE_MONTHS = ['Month 1-3', 'Month 4-8', 'Month 9-12', 'Month 13-15'];
-const BAR_COLOR = 'bg-primary';
+const PHASE_MONTH_START = [0, 3, 8, 12]; // 0-indexed month offset where each phase begins
+const PHASE_MONTH_DURATION = [3, 5, 4, 3];
+const TOTAL_MONTHS = 15;
+const TIMELINE_GRID = `160px repeat(${TOTAL_MONTHS}, minmax(0, 1fr))`;
 
 // ─── Component ───
+
+interface HoverState {
+  name: string;
+  dimension: string;
+  rating: ScorecardItem['rating'];
+  actions: string;
+  finding: string;
+}
 
 export function GapAnalysisDashboard({ companyId }: { companyId: string }) {
   const [report, setReport] = useState<Report | null>(null);
   const [loading, setLoading] = useState(true);
+  const [hover, setHover] = useState<HoverState | null>(null);
+  const [cursor, setCursor] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
 
   const fetchReport = useCallback(async () => {
     try {
@@ -269,78 +319,59 @@ export function GapAnalysisDashboard({ companyId }: { companyId: string }) {
   return (
     <div className="space-y-4">
       {/* ─── Overall Readiness Banner ─── */}
-      {overall && overall.rating && (
-        <Card className={cn(
-          'border',
-          overall.rating.toLowerCase().includes('not ready') ? 'border-red-500/30' :
-          overall.rating.toLowerCase().includes('conditional') ? 'border-amber-500/30' :
-          'border-emerald-500/30'
-        )}>
-          <CardContent className="py-5">
-            <div className="grid grid-cols-2 gap-4">
-              <div className="flex items-center gap-3 min-w-0">
-                <div className={cn(
-                  'flex h-10 w-10 shrink-0 items-center justify-center rounded-lg',
-                  overall.rating.toLowerCase().includes('not ready') ? 'bg-red-500/15' :
-                  overall.rating.toLowerCase().includes('conditional') ? 'bg-amber-500/15' :
-                  'bg-emerald-500/15'
-                )}>
-                  <Shield className={cn(
-                    'h-5 w-5',
-                    overall.rating.toLowerCase().includes('not ready') ? 'text-red-400' :
-                    overall.rating.toLowerCase().includes('conditional') ? 'text-amber-400' :
-                    'text-emerald-400'
-                  )} />
-                </div>
-                <div className="min-w-0">
-                  <p className="text-[10px] uppercase tracking-wider text-muted-foreground">IPO Readiness</p>
-                  <p className="text-sm font-bold truncate">{overall.rating}</p>
-                </div>
+      {overall && overall.rating && (() => {
+        const rLower = overall.rating.toLowerCase();
+        const readinessTone =
+          rLower.includes('not ready') ? 'text-red-400' :
+          rLower.includes('conditional') ? 'text-amber-400' :
+          'text-emerald-400';
+        const recLower = overall.recommendation.toLowerCase();
+        const recTone =
+          recLower.startsWith('no-go') || recLower.startsWith('no go') ? 'text-red-400' :
+          recLower.startsWith('conditional') || recLower.includes('caution') ? 'text-amber-400' :
+          'text-emerald-400';
+
+        type Metric = { label: string; value: string; icon: typeof Shield; valueTone?: string };
+        const metrics: Metric[] = [
+          { label: 'IPO Readiness',   value: overall.rating,                               icon: Shield,         valueTone: readinessTone },
+          { label: 'Time to Ready',   value: overall.timeEstimate,                         icon: Calendar },
+          { label: 'Est. Total Cost', value: costSummary.total || overall.totalCost || '', icon: DollarSign },
+          { label: 'Recommendation',  value: overall.recommendation,                       icon: AlertTriangle,  valueTone: recTone },
+        ].filter(m => m.value);
+
+        return (
+          <Card>
+            <CardContent className="py-5">
+              <div className="grid gap-x-6 gap-y-4 sm:grid-cols-2 xl:grid-cols-4">
+                {metrics.map((m, i) => (
+                  <div
+                    key={m.label}
+                    className={cn(
+                      'flex items-center gap-3 min-w-0',
+                      i > 0 && 'xl:border-l xl:border-border/60 xl:pl-6'
+                    )}
+                  >
+                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-muted/50 ring-1 ring-inset ring-border">
+                      <m.icon className="h-4 w-4 text-muted-foreground" />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-[10px] uppercase tracking-[0.12em] text-muted-foreground/80">{m.label}</p>
+                      <p className={cn('mt-0.5 text-sm font-semibold line-clamp-2', m.valueTone)}>{m.value}</p>
+                    </div>
+                  </div>
+                ))}
               </div>
-              {overall.timeEstimate && (
-                <div className="flex items-center gap-3 min-w-0">
-                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-blue-500/15">
-                    <Calendar className="h-5 w-5 text-blue-400" />
-                  </div>
-                  <div className="min-w-0">
-                    <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Time to Ready</p>
-                    <p className="text-sm font-bold truncate">{overall.timeEstimate}</p>
-                  </div>
-                </div>
-              )}
-              {(costSummary.total || overall.totalCost) && (
-                <div className="flex items-center gap-3 min-w-0">
-                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-purple-500/15">
-                    <DollarSign className="h-5 w-5 text-purple-400" />
-                  </div>
-                  <div className="min-w-0">
-                    <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Est. Total Cost</p>
-                    <p className="text-sm font-bold truncate">{costSummary.total || overall.totalCost}</p>
-                  </div>
-                </div>
-              )}
-              {overall.recommendation && (
-                <div className="flex items-center gap-3 min-w-0">
-                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-orange-500/15">
-                    <AlertTriangle className="h-5 w-5 text-orange-400" />
-                  </div>
-                  <div className="min-w-0">
-                    <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Recommendation</p>
-                    <p className="text-sm font-bold line-clamp-2">{overall.recommendation}</p>
-                  </div>
-                </div>
-              )}
-            </div>
-          </CardContent>
-        </Card>
-      )}
+            </CardContent>
+          </Card>
+        );
+      })()}
 
       {/* ─── Scorecard Grid ─── */}
       {ratings.length > 0 && (
         <Card>
           <CardHeader className="pb-3">
-            <CardTitle className="flex items-center gap-2 text-base">
-              <Shield className="h-5 w-5 text-primary" />
+            <CardTitle className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+              <Shield className="h-3.5 w-3.5 text-primary" />
               IPO Readiness Scorecard
             </CardTitle>
           </CardHeader>
@@ -350,10 +381,14 @@ export function GapAnalysisDashboard({ companyId }: { companyId: string }) {
                 const cfg = RATING_CONFIG[r.rating];
                 const Icon = cfg.icon;
                 return (
-                  <div key={r.dimension} className={cn('rounded-lg border p-3 space-y-2', cfg.bg, cfg.border)}>
+                  <div
+                    key={r.dimension}
+                    className="relative overflow-hidden rounded-lg border border-border/60 bg-muted/20 p-3 pl-4 space-y-2 transition-colors hover:bg-muted/30"
+                  >
+                    <span aria-hidden className={cn('absolute left-0 top-0 bottom-0 w-[3px]', cfg.rail)} />
                     <div className="flex items-start justify-between gap-2">
                       <p className="text-xs font-semibold leading-tight">{r.dimension}</p>
-                      <div className={cn('flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold', cfg.bg, cfg.text)}>
+                      <div className={cn('flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium ring-1 ring-inset', cfg.badgeBg, cfg.badgeText, cfg.badgeRing)}>
                         <Icon className="h-3 w-3" />
                         {cfg.label}
                       </div>
@@ -371,57 +406,118 @@ export function GapAnalysisDashboard({ companyId }: { companyId: string }) {
       {ganttItems.length > 0 && (
         <Card>
           <CardHeader className="pb-3">
-            <CardTitle className="flex items-center gap-2 text-base">
-              <Calendar className="h-5 w-5 text-primary" />
+            <CardTitle className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+              <Calendar className="h-3.5 w-3.5 text-primary" />
               Implementation Timeline
             </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="overflow-x-auto">
-              <div className="min-w-[600px]">
-                {/* Phase headers */}
-                <div className="grid grid-cols-[160px_1fr_1fr_1fr_1fr] mb-px rounded-t-lg overflow-hidden">
-                  <div className="px-2 py-2" />
-                  {PHASE_LABELS.map((label, i) => (
-                    <div key={label} className={cn('text-center py-2 px-1', PHASE_BG[i])}>
-                      <p className={cn('text-[10px] font-semibold', PHASE_HEADER_COLOR[i])}>{label}</p>
-                      <p className="text-[9px] text-muted-foreground/60">{PHASE_MONTHS[i]}</p>
-                    </div>
-                  ))}
-                </div>
-                {/* Gantt bars — continuous spans */}
-                {ganttItems.map((item, rowIdx) => {
-                  // Find first and last active phase to draw one continuous bar
-                  const firstActive = item.phases.indexOf(true);
-                  const lastActive = item.phases.lastIndexOf(true);
-
-                  return (
-                    <div key={item.name} className={cn('grid grid-cols-[160px_1fr_1fr_1fr_1fr]', rowIdx % 2 === 0 ? 'bg-muted/5' : '')}>
-                      <div className="flex items-center px-2 py-2">
-                        <p className="text-[11px] font-medium truncate">{item.name}</p>
+              <div className="min-w-[720px]">
+                {/* Phase headers — each spans its month columns */}
+                <div
+                  className="grid border-b border-border/60 pb-2 mb-1"
+                  style={{ gridTemplateColumns: TIMELINE_GRID }}
+                >
+                  <div className="px-2" />
+                  {PHASE_LABELS.map((label, i) => {
+                    const startCol = 2 + PHASE_MONTH_START[i];
+                    const endCol = startCol + PHASE_MONTH_DURATION[i];
+                    return (
+                      <div
+                        key={label}
+                        className={cn('text-center px-1', i > 0 && 'border-l border-border/80')}
+                        style={{ gridColumn: `${startCol} / ${endCol}` }}
+                      >
+                        <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">{label}</p>
+                        <p className="text-[9px] text-muted-foreground/60 mt-0.5 font-mono">{PHASE_MONTHS[i]}</p>
                       </div>
-                      {item.phases.map((_, i) => {
-                        const isFirst = i === firstActive;
-                        const isLast = i === lastActive;
-                        const isActive = i >= firstActive && i <= lastActive && firstActive !== -1;
+                    );
+                  })}
+                </div>
+                {/* Body: rows + single continuous vertical-line overlay */}
+                <div className="relative">
+                  {/* Vertical month/phase lines — single layer spanning full body height */}
+                  <div
+                    aria-hidden
+                    className="pointer-events-none absolute inset-0 grid"
+                    style={{ gridTemplateColumns: TIMELINE_GRID }}
+                  >
+                    <div />
+                    {Array.from({ length: TOTAL_MONTHS }).map((_, m) => {
+                      const isPhaseBoundary = PHASE_MONTH_START.includes(m) && m > 0;
+                      return (
+                        <div
+                          key={m}
+                          className={cn(
+                            m > 0 && (isPhaseBoundary ? 'border-l border-border' : 'border-l border-border/60'),
+                          )}
+                        />
+                      );
+                    })}
+                  </div>
 
-                        return (
-                          <div key={i} className={cn('flex items-center py-2', PHASE_BG[i])}>
-                            {isActive ? (
-                              <div className={cn(
-                                'h-4 w-full', BAR_COLOR,
-                                isFirst && 'ml-1.5 rounded-l-sm',
-                                isLast && 'mr-1.5 rounded-r-sm',
-                              )} />
-                            ) : (
-                              <div className="h-4 w-full" />
+                  {/* Gantt rows */}
+                  {ganttItems.map((item) => {
+                    const firstActive = item.phases.indexOf(true);
+                    const lastActive = item.phases.lastIndexOf(true);
+                    const matched = matchScorecardForWorkstream(item.name, ratings);
+                    const matchedRating = matched?.rating ?? null;
+                    const barClass = matchedRating
+                      ? RATING_CONFIG[matchedRating].bar
+                      : 'bg-gradient-to-r from-primary/60 via-primary/80 to-primary/95';
+                    const barStartCol = firstActive !== -1 ? 2 + PHASE_MONTH_START[firstActive] : 0;
+                    const barEndCol = firstActive !== -1 ? 2 + PHASE_MONTH_START[lastActive] + PHASE_MONTH_DURATION[lastActive] : 0;
+                    const isHovered = hover?.name === item.name;
+                    const hasTooltipData = !!matched && (matched.actions || matched.finding);
+
+                    const handleEnter = () => {
+                      if (!matched) return;
+                      setHover({
+                        name: item.name,
+                        dimension: matched.dimension,
+                        rating: matched.rating,
+                        actions: matched.actions,
+                        finding: matched.finding,
+                      });
+                    };
+
+                    return (
+                      <div
+                        key={item.name}
+                        className={cn(
+                          'relative grid items-center transition-colors',
+                          isHovered ? 'bg-foreground/[0.04]' : 'hover:bg-foreground/[0.02]',
+                          hasTooltipData && 'cursor-default'
+                        )}
+                        style={{ gridTemplateColumns: TIMELINE_GRID }}
+                        onMouseEnter={handleEnter}
+                        onMouseMove={(e) => setCursor({ x: e.clientX, y: e.clientY })}
+                        onMouseLeave={() => setHover(null)}
+                      >
+                        <div className="flex items-center px-2 py-1">
+                          <p className="text-[11px] font-medium truncate text-foreground/90">{item.name}</p>
+                        </div>
+                        {/* Structural spacer cells (no borders — overlay handles lines) */}
+                        {Array.from({ length: TOTAL_MONTHS }).map((_, m) => (
+                          <div key={m} className="py-1 h-full" />
+                        ))}
+                        {/* Single continuous bar */}
+                        {firstActive !== -1 && (
+                          <div
+                            className={cn(
+                              'relative self-center mx-1.5 h-2.5 transition-transform duration-150',
+                              barClass,
+                              !isHovered && 'shadow-[inset_0_1px_0_rgba(255,255,255,0.18),inset_0_-1px_0_rgba(0,0,0,0.25)]',
+                              isHovered && 'scale-y-125'
                             )}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  );
-                })}
+                            style={{ gridColumn: `${barStartCol} / ${barEndCol}`, gridRow: 1 }}
+                          />
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
             </div>
 
@@ -447,8 +543,8 @@ export function GapAnalysisDashboard({ companyId }: { companyId: string }) {
       {workstreams.length > 0 && (
         <Card>
           <CardHeader className="pb-3">
-            <CardTitle className="flex items-center gap-2 text-base">
-              <DollarSign className="h-5 w-5 text-primary" />
+            <CardTitle className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+              <DollarSign className="h-3.5 w-3.5 text-primary" />
               Workstream Status & Cost Estimates
             </CardTitle>
           </CardHeader>
@@ -517,6 +613,67 @@ export function GapAnalysisDashboard({ companyId }: { companyId: string }) {
             )}
           </CardContent>
         </Card>
+      )}
+
+      {/* Cursor-following tooltip for Gantt rows — portaled to <body> so fixed
+          positioning bypasses transformed ancestors (stagger-children, etc.) */}
+      {hover && typeof document !== 'undefined' && createPortal(
+        (() => {
+        const cfg = RATING_CONFIG[hover.rating];
+        const TOOLTIP_W = 320;
+        const APPROX_H = 200;
+        const OFFSET_X = 14;
+        const OFFSET_Y = 14;
+        const PAD = 12;
+        const vw = window.innerWidth;
+        const vh = window.innerHeight;
+
+        // Horizontal: prefer right side of cursor, flip to left if it would overflow,
+        // then clamp to viewport so text is never clipped.
+        let left = cursor.x + OFFSET_X;
+        if (left + TOOLTIP_W + PAD > vw) left = cursor.x - OFFSET_X - TOOLTIP_W;
+        left = Math.max(PAD, Math.min(left, vw - TOOLTIP_W - PAD));
+
+        // Vertical: align the cursor with the tooltip header (~20px below tooltip top)
+        // so the cursor reads as being "attached" to the header bar.
+        const HEADER_ANCHOR = 20;
+        let top = cursor.y - HEADER_ANCHOR;
+        if (top + APPROX_H + PAD > vh) top = cursor.y - APPROX_H + HEADER_ANCHOR;
+        top = Math.max(PAD, Math.min(top, vh - APPROX_H - PAD));
+
+        return (
+          <div
+            className="fixed z-50 pointer-events-none rounded-lg border border-border bg-popover text-popover-foreground shadow-xl backdrop-blur-sm"
+            style={{ left, top, width: TOOLTIP_W }}
+          >
+            <div className="flex items-center gap-2 border-b border-border/60 px-3 py-2">
+              <span className={cn('h-1.5 w-1.5 rounded-full', cfg.rail)} />
+              <div className="min-w-0 flex-1">
+                <p className="text-[11px] font-semibold leading-tight truncate">{hover.name}</p>
+                <p className="text-[10px] text-muted-foreground truncate">{hover.dimension}</p>
+              </div>
+              <span className={cn('shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wider ring-1 ring-inset', cfg.badgeBg, cfg.badgeText, cfg.badgeRing)}>
+                {cfg.label}
+              </span>
+            </div>
+            <div className="p-3 space-y-2">
+              {hover.actions && (
+                <div>
+                  <p className="text-[9px] font-semibold uppercase tracking-[0.14em] text-muted-foreground/80 mb-1">Recommended Actions</p>
+                  <p className="text-[11px] leading-relaxed text-foreground/90 whitespace-pre-line">{hover.actions}</p>
+                </div>
+              )}
+              {hover.finding && (
+                <div>
+                  <p className="text-[9px] font-semibold uppercase tracking-[0.14em] text-muted-foreground/80 mb-1">Finding</p>
+                  <p className="text-[11px] leading-relaxed text-muted-foreground">{hover.finding}</p>
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      })(),
+        document.body,
       )}
     </div>
   );

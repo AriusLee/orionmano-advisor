@@ -89,7 +89,7 @@ export default function DecksPage({ params }: { params: Promise<{ id: string }> 
           <Presentation className="h-6 w-6 text-primary" />
         </div>
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Decks & Materials</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">Decks & Materials</h1>
           <p className="text-sm text-muted-foreground">
             Branded presentation decks generated from company data — no AI tokens needed
           </p>

@@ -116,15 +116,26 @@ export function CompanySidebar({ companyId, className }: CompanySidebarProps) {
                     key={item.href}
                     href={item.href}
                     className={cn(
-                      'flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors cursor-pointer',
+                      'group relative flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all cursor-pointer',
                       active
                         ? 'bg-sidebar-accent text-sidebar-accent-foreground'
                         : 'text-muted-foreground hover:bg-sidebar-accent/50 hover:text-sidebar-foreground'
                     )}
                   >
-                    <item.icon className="h-4 w-4 shrink-0" />
+                    <span
+                      aria-hidden
+                      className={cn(
+                        'absolute left-0 top-1/2 h-5 w-[2px] -translate-y-1/2 rounded-r-full transition-all',
+                        active ? 'bg-primary opacity-100' : 'bg-primary opacity-0 group-hover:opacity-40'
+                      )}
+                    />
+                    <item.icon
+                      className={cn(
+                        'h-4 w-4 shrink-0 transition-colors',
+                        active ? 'text-primary' : 'text-muted-foreground group-hover:text-sidebar-foreground'
+                      )}
+                    />
                     <span className="flex-1">{item.label}</span>
-                    <span className="h-2 w-2 rounded-full bg-muted-foreground/20 shrink-0" />
                   </Link>
                 );
               })}

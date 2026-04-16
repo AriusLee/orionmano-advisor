@@ -38,14 +38,14 @@ export default function GapAnalysisPage({ params }: { params: Promise<{ id: stri
   const isReady = extractedDocs.length > 0;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 stagger-children">
       <div className="flex items-center gap-3">
-        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
+        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 ring-1 ring-primary/20">
           <ClipboardCheck className="h-6 w-6 text-primary" />
         </div>
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Gap Analysis</h1>
-          <p className="text-sm text-muted-foreground">
+          <h1 className="text-3xl font-semibold tracking-tight leading-none">Gap Analysis</h1>
+          <p className="mt-1.5 text-sm text-muted-foreground">
             Nasdaq IPO readiness assessment — financial standards, governance, reporting, industry gaps
           </p>
         </div>

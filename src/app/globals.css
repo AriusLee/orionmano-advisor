@@ -122,37 +122,120 @@
   }
   body {
     @apply bg-background text-foreground;
+    position: relative;
   }
   html {
     @apply font-sans;
   }
+}
 
-  /* Webkit-based browsers (Chrome, Safari, Edge) */
-  ::-webkit-scrollbar {
-    width: 8px;
-    height: 8px;
-  }
-  ::-webkit-scrollbar-track {
-    background: transparent;
-  }
-  ::-webkit-scrollbar-thumb {
-    background: color-mix(in oklch, var(--muted-foreground) 25%, transparent);
-    border-radius: 9999px;
-    border: 2px solid transparent;
-    background-clip: padding-box;
-  }
-  ::-webkit-scrollbar-thumb:hover {
-    background: color-mix(in oklch, var(--muted-foreground) 45%, transparent);
-    background-clip: padding-box;
-    border: 2px solid transparent;
-  }
-  ::-webkit-scrollbar-corner {
-    background: transparent;
-  }
+/* -------------------------------------------------------------------- */
+/* Atmosphere: subtle radial gradient + fine grain overlay.             */
+/* Applied to body pseudo-elements so they sit behind all content.      */
+/* -------------------------------------------------------------------- */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -2;
+  pointer-events: none;
+  background:
+    radial-gradient(ellipse 1200px 800px at 15% 0%, oklch(0.22 0.03 190 / 0.35), transparent 60%),
+    radial-gradient(ellipse 1000px 700px at 100% 100%, oklch(0.20 0.04 260 / 0.40), transparent 55%);
+}
 
-  /* Firefox */
-  * {
-    scrollbar-width: thin;
-    scrollbar-color: color-mix(in oklch, var(--muted-foreground) 25%, transparent) transparent;
+body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  opacity: 0.035;
+  mix-blend-mode: overlay;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 0.9 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+}
+
+/* -------------------------------------------------------------------- */
+/* Utilities                                                            */
+/* -------------------------------------------------------------------- */
+.font-numeric {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1, "ss01" 1;
+  letter-spacing: -0.02em;
+}
+
+/* -------------------------------------------------------------------- */
+/* Motion vocabulary                                                    */
+/* -------------------------------------------------------------------- */
+@keyframes om-fade-up {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes om-fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@keyframes om-shimmer {
+  0%   { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+.animate-fade-up {
+  animation: om-fade-up 500ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.animate-fade-in {
+  animation: om-fade-in 400ms ease-out both;
+}
+
+.stagger-children > * {
+  animation: om-fade-up 500ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+.stagger-children > *:nth-child(1) { animation-delay: 40ms; }
+.stagger-children > *:nth-child(2) { animation-delay: 90ms; }
+.stagger-children > *:nth-child(3) { animation-delay: 150ms; }
+.stagger-children > *:nth-child(4) { animation-delay: 220ms; }
+.stagger-children > *:nth-child(5) { animation-delay: 300ms; }
+.stagger-children > *:nth-child(6) { animation-delay: 380ms; }
+.stagger-children > *:nth-child(7) { animation-delay: 460ms; }
+.stagger-children > *:nth-child(8) { animation-delay: 540ms; }
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-fade-up,
+  .animate-fade-in,
+  .stagger-children > * {
+    animation: none !important;
   }
+}
+
+/* -------------------------------------------------------------------- */
+/* Scrollbar (global, not inside @layer so it wins specificity)         */
+/* -------------------------------------------------------------------- */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background-color: oklch(0.40 0.014 260 / 0.55);
+  border-radius: 9999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+  transition: background-color 150ms ease;
+}
+::-webkit-scrollbar-thumb:hover {
+  background-color: oklch(0.55 0.02 260 / 0.80);
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+html {
+  scrollbar-width: thin;
+  scrollbar-color: oklch(0.40 0.014 260 / 0.55) transparent;
 }

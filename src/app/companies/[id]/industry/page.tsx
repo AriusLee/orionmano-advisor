@@ -90,7 +90,7 @@ export default function IndustryPage({ params }: { params: Promise<{ id: string 
             <Globe className="h-6 w-6 text-primary" />
           </div>
           <div>
-            <h1 className="text-2xl font-bold tracking-tight">Industry Expert Analysis</h1>
+            <h1 className="text-2xl font-semibold tracking-tight">Industry Expert Analysis</h1>
             <p className="text-sm text-muted-foreground">
               Comprehensive market research, competitive landscape, and strategic positioning
             </p>

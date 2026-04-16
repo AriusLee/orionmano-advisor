@@ -69,7 +69,7 @@ export default function TeaserPage({ params }: { params: Promise<{ id: string }>
             <FileBarChart className="h-6 w-6 text-primary" />
           </div>
           <div>
-            <h1 className="text-2xl font-bold tracking-tight">Company Teaser</h1>
+            <h1 className="text-2xl font-semibold tracking-tight">Company Teaser</h1>
             <p className="text-sm text-muted-foreground">
               Concise 2-4 page summary with key metrics for potential investors
             </p>

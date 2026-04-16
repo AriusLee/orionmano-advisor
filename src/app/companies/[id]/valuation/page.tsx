@@ -78,7 +78,7 @@ export default function ValuationPage({ params }: { params: Promise<{ id: string
             <BarChart3 className="h-6 w-6 text-primary" />
           </div>
           <div>
-            <h1 className="text-2xl font-bold tracking-tight">Valuation</h1>
+            <h1 className="text-2xl font-semibold tracking-tight">Valuation</h1>
             <p className="text-sm text-muted-foreground">
               Enterprise valuation — DCF, comparable companies, sensitivity analysis
             </p>
