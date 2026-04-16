@@ -6,7 +6,7 @@ import { toast } from 'sonner';
 import { apiJson } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { GenerateReportDialog } from '@/components/reports/generate-report-dialog';
-import { SectionPreview } from '@/components/reports/section-preview';
+import { IndustryReportDashboard } from '@/components/reports/industry-report-dashboard';
 import { EmptyDataState } from '@/components/empty-data-state';
 import { GeneratingState } from '@/components/generating-state';
 import { useCompanyStore } from '@/stores/company-store';
@@ -48,19 +48,6 @@ interface Company {
 const REQUIRED_DOCS = ['company_profile'];
 const RECOMMENDED_DOCS = ['management_accounts', 'material_contract', 'projections'];
 const REPORT_TYPE = 'industry_report';
-
-const ANALYSIS_SECTIONS = [
-  'Industry Overview & Market Context',
-  'Market Size & Growth Trajectory',
-  'Geographic Market Distribution',
-  'Growth Drivers & Tailwinds',
-  'Market Segment Deep Dive',
-  'Competitive Landscape',
-  'Industry Trends & Evolution',
-  'Challenges & Headwinds',
-  'Market Outlook & Opportunities',
-  'Strategic Recommendations',
-];
 
 export default function IndustryPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
@@ -185,12 +172,7 @@ export default function IndustryPage({ params }: { params: Promise<{ id: string 
       </div>
 
       {hasReport ? (
-        <SectionPreview
-          companyId={id}
-          reportType={REPORT_TYPE}
-          sections={ANALYSIS_SECTIONS}
-          icon={<Globe className="h-4 w-4 text-primary/60 shrink-0" />}
-        />
+        <IndustryReportDashboard companyId={id} reportType={REPORT_TYPE} />
       ) : generatingReport || starting ? (
         <GeneratingState
           icon={Globe}

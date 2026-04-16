@@ -296,3 +296,59 @@ html {
   scrollbar-width: thin;
   scrollbar-color: oklch(0.40 0.014 260 / 0.55) transparent;
 }
+
+/* -------------------------------------------------------------------- */
+/* Industry-report footnote styling (McKinsey-style)                    */
+/* -------------------------------------------------------------------- */
+.report-content sup a {
+  font-size: 0.7em;
+  vertical-align: super;
+  text-decoration: none;
+  color: oklch(0.65 0.18 250);
+  margin-left: 1px;
+  font-weight: 500;
+}
+.report-content sup a:hover {
+  text-decoration: underline;
+}
+.report-content .footnotes {
+  margin-top: 1.5rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid oklch(0.30 0.01 260 / 0.60);
+  font-size: 0.78rem;
+  line-height: 1.5;
+  color: oklch(0.72 0.01 260);
+}
+.report-content .footnotes h2,
+.report-content .footnotes .sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+.report-content .footnotes ol {
+  list-style: decimal;
+  padding-left: 1.5rem;
+  margin: 0;
+}
+.report-content .footnotes li {
+  margin: 0.25rem 0;
+}
+.report-content .footnotes li p {
+  margin: 0;
+  display: inline;
+}
+.report-content .footnotes a[href^="https"],
+.report-content .footnotes a[href^="http"] {
+  color: oklch(0.75 0.10 250);
+  text-decoration: none;
+}
+.report-content .footnotes a[href^="https"]:hover,
+.report-content .footnotes a[href^="http"]:hover {
+  text-decoration: underline;
+}

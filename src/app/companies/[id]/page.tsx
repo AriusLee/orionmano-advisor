@@ -42,6 +42,8 @@ import {
 import { apiJson } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { CompanyLogo } from '@/components/company-logo';
+import { StatCard } from '@/components/ui/stat-card';
+import { SectionLabel } from '@/components/ui/section-label';
 
 interface Company {
   id: string;
@@ -113,13 +115,24 @@ const CHART_COLORS = [
   'oklch(0.60 0.18 300)',
   'oklch(0.55 0.15 260)',
 ];
+const CHART_COLORS_DARK = [
+  'oklch(0.55 0.14 175)',
+  'oklch(0.45 0.14 250)',
+  'oklch(0.50 0.11 140)',
+  'oklch(0.42 0.16 300)',
+  'oklch(0.38 0.14 260)',
+];
 
 const TOOLTIP_STYLE: React.CSSProperties = {
   background: 'oklch(0.20 0.014 260)',
   border: '1px solid oklch(0.30 0.014 260)',
   borderRadius: 8,
   fontSize: 12,
+  color: 'oklch(0.92 0.01 260)',
+  padding: '8px 10px',
 };
+const TOOLTIP_LABEL_STYLE: React.CSSProperties = { color: 'oklch(0.92 0.01 260)', fontWeight: 500, marginBottom: 2 };
+const TOOLTIP_ITEM_STYLE: React.CSSProperties = { color: 'oklch(0.85 0.01 260)' };
 
 const SEVERITY_META: Record<
   string,
@@ -469,6 +482,20 @@ export default function CompanyOverview({
                 <ChartCard title="Revenue & Profitability" subtitle="By reporting period">
                   <ResponsiveContainer width="100%" height="100%">
                     <BarChart data={trendData}>
+                      <defs>
+                        <linearGradient id="finRevG" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="0%" stopColor={CHART_COLORS[0]} stopOpacity={0.95} />
+                          <stop offset="100%" stopColor={CHART_COLORS_DARK[0]} stopOpacity={0.85} />
+                        </linearGradient>
+                        <linearGradient id="finGpG" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="0%" stopColor={CHART_COLORS[2]} stopOpacity={0.95} />
+                          <stop offset="100%" stopColor={CHART_COLORS_DARK[2]} stopOpacity={0.85} />
+                        </linearGradient>
+                        <linearGradient id="finNiG" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="0%" stopColor={CHART_COLORS[1]} stopOpacity={0.95} />
+                          <stop offset="100%" stopColor={CHART_COLORS_DARK[1]} stopOpacity={0.85} />
+                        </linearGradient>
+                      </defs>
                       <CartesianGrid
                         strokeDasharray="3 3"
                         stroke="oklch(0.30 0.014 260)"
@@ -486,25 +513,16 @@ export default function CompanyOverview({
                         tickLine={false}
                         tickFormatter={(v) => formatNum(Number(v))}
                       />
-                      <Tooltip contentStyle={TOOLTIP_STYLE} formatter={currencyFmt} />
-                      <Bar
-                        dataKey="Revenue"
-                        fill={CHART_COLORS[0]}
-                        radius={[4, 4, 0, 0]}
-                        name="Revenue"
+                      <Tooltip
+                        contentStyle={TOOLTIP_STYLE}
+                        labelStyle={TOOLTIP_LABEL_STYLE}
+                        itemStyle={TOOLTIP_ITEM_STYLE}
+                        cursor={false}
+                        formatter={currencyFmt}
                       />
-                      <Bar
-                        dataKey="Gross Profit"
-                        fill={CHART_COLORS[2]}
-                        radius={[4, 4, 0, 0]}
-                        name="Gross Profit"
-                      />
-                      <Bar
-                        dataKey="Net Income"
-                        fill={CHART_COLORS[1]}
-                        radius={[4, 4, 0, 0]}
-                        name="Net Income"
-                      />
+                      <Bar dataKey="Revenue" fill="url(#finRevG)" radius={0} name="Revenue" />
+                      <Bar dataKey="Gross Profit" fill="url(#finGpG)" radius={0} name="Gross Profit" />
+                      <Bar dataKey="Net Income" fill="url(#finNiG)" radius={0} name="Net Income" />
                     </BarChart>
                   </ResponsiveContainer>
                 </ChartCard>
@@ -541,7 +559,13 @@ export default function CompanyOverview({
                         tickLine={false}
                         unit="%"
                       />
-                      <Tooltip contentStyle={TOOLTIP_STYLE} formatter={percentFmt} />
+                      <Tooltip
+                        contentStyle={TOOLTIP_STYLE}
+                        labelStyle={TOOLTIP_LABEL_STYLE}
+                        itemStyle={TOOLTIP_ITEM_STYLE}
+                        cursor={{ stroke: 'oklch(0.40 0.01 260)', strokeDasharray: '3 3' }}
+                        formatter={percentFmt}
+                      />
                       <Area
                         type="monotone"
                         dataKey="Gross Margin"
@@ -565,20 +589,36 @@ export default function CompanyOverview({
                 <ChartCard title="Revenue Breakdown" subtitle="By source">
                   <ResponsiveContainer width="100%" height="100%">
                     <PieChart>
+                      <defs>
+                        {revenueBreakdown.map((_, i) => (
+                          <linearGradient key={i} id={`revG${i}`} x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="0%" stopColor={CHART_COLORS[i % CHART_COLORS.length]} stopOpacity={0.95} />
+                            <stop offset="100%" stopColor={CHART_COLORS_DARK[i % CHART_COLORS_DARK.length]} stopOpacity={0.85} />
+                          </linearGradient>
+                        ))}
+                      </defs>
                       <Pie
                         data={revenueBreakdown}
                         cx="50%"
                         cy="50%"
                         innerRadius={42}
                         outerRadius={72}
-                        paddingAngle={3}
+                        paddingAngle={1}
+                        stroke="oklch(0.16 0.01 260)"
+                        strokeWidth={2}
                         dataKey="value"
                       >
                         {revenueBreakdown.map((_, i) => (
-                          <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />
+                          <Cell key={i} fill={`url(#revG${i})`} />
                         ))}
                       </Pie>
-                      <Tooltip contentStyle={TOOLTIP_STYLE} formatter={currencyFmt} />
+                      <Tooltip
+                        contentStyle={TOOLTIP_STYLE}
+                        labelStyle={TOOLTIP_LABEL_STYLE}
+                        itemStyle={TOOLTIP_ITEM_STYLE}
+                        cursor={false}
+                        formatter={currencyFmt}
+                      />
                     </PieChart>
                   </ResponsiveContainer>
                   <Legend
@@ -594,20 +634,36 @@ export default function CompanyOverview({
                 <ChartCard title="Asset Composition" subtitle="Current vs. non-current">
                   <ResponsiveContainer width="100%" height="100%">
                     <PieChart>
+                      <defs>
+                        {bsData.map((_, i) => (
+                          <linearGradient key={i} id={`bsG${i}`} x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="0%" stopColor={CHART_COLORS[i % CHART_COLORS.length]} stopOpacity={0.95} />
+                            <stop offset="100%" stopColor={CHART_COLORS_DARK[i % CHART_COLORS_DARK.length]} stopOpacity={0.85} />
+                          </linearGradient>
+                        ))}
+                      </defs>
                       <Pie
                         data={bsData}
                         cx="50%"
                         cy="50%"
                         innerRadius={42}
                         outerRadius={72}
-                        paddingAngle={3}
+                        paddingAngle={1}
+                        stroke="oklch(0.16 0.01 260)"
+                        strokeWidth={2}
                         dataKey="value"
                       >
                         {bsData.map((_, i) => (
-                          <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />
+                          <Cell key={i} fill={`url(#bsG${i})`} />
                         ))}
                       </Pie>
-                      <Tooltip contentStyle={TOOLTIP_STYLE} formatter={currencyFmt} />
+                      <Tooltip
+                        contentStyle={TOOLTIP_STYLE}
+                        labelStyle={TOOLTIP_LABEL_STYLE}
+                        itemStyle={TOOLTIP_ITEM_STYLE}
+                        cursor={false}
+                        formatter={currencyFmt}
+                      />
                     </PieChart>
                   </ResponsiveContainer>
                   <Legend
@@ -906,66 +962,6 @@ export default function CompanyOverview({
 }
 
 /* ------------------------------ helpers ------------------------------ */
-
-function SectionLabel({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="flex items-center gap-2">
-      <Sparkles className="h-3 w-3 text-primary/60" />
-      <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-muted-foreground">
-        {children}
-      </p>
-      <span className="h-px flex-1 bg-border/40" />
-    </div>
-  );
-}
-
-interface StatCardProps {
-  label: string;
-  value: string;
-  icon: LucideIcon;
-  caption: React.ReactNode;
-  accent?: 'warn';
-}
-
-function StatCard({ label, value, icon: Icon, caption, accent }: StatCardProps) {
-  return (
-    <article className="group relative overflow-hidden rounded-xl border border-border/50 bg-card/30 p-5">
-      <div
-        className={cn(
-          'absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent to-transparent',
-          accent === 'warn' ? 'via-amber-400/50' : 'via-primary/40',
-        )}
-      />
-      <div className="relative flex items-center justify-between">
-        <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-          {label}
-        </span>
-        <div
-          className={cn(
-            'flex h-7 w-7 items-center justify-center rounded-md ring-1 ring-inset',
-            accent === 'warn'
-              ? 'bg-amber-400/10 ring-amber-400/25'
-              : 'bg-primary/10 ring-primary/20',
-          )}
-        >
-          <Icon
-            className={cn(
-              'h-3.5 w-3.5',
-              accent === 'warn' ? 'text-amber-400' : 'text-primary',
-            )}
-            strokeWidth={2}
-          />
-        </div>
-      </div>
-      <p className="font-numeric relative mt-4 text-3xl font-semibold tracking-tight">
-        {value}
-      </p>
-      <div className="relative mt-1 truncate text-xs text-muted-foreground">
-        {caption}
-      </div>
-    </article>
-  );
-}
 
 interface PillProps {
   tone: 'primary' | 'outline' | 'muted';

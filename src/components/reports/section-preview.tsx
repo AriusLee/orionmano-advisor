@@ -6,6 +6,31 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { ChevronDown, ChevronRight, FileText, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+import { ChartBlock, parseChartSpec } from './chart-block';
+
+const MARKDOWN_COMPONENTS = {
+  code({ className, children, ...props }: React.HTMLAttributes<HTMLElement> & { className?: string; children?: React.ReactNode }) {
+    const lang = /language-(\w+)/.exec(className || '')?.[1];
+    if (lang === 'chart') {
+      const raw = String(children ?? '').trim();
+      const spec = parseChartSpec(raw);
+      if (spec) return <ChartBlock spec={spec} />;
+      return (
+        <pre className="not-prose text-xs text-destructive/80 border border-destructive/30 rounded p-2 my-2">
+          Invalid chart spec:
+          {'\n'}
+          {raw.slice(0, 400)}
+        </pre>
+      );
+    }
+    return (
+      <code className={className} {...props}>
+        {children}
+      </code>
+    );
+  },
+};
 
 interface Report {
   id: string;
@@ -103,8 +128,8 @@ export function SectionPreview({ companyId, reportType, sections, icon }: Sectio
                       <Loader2 className="h-4 w-4 animate-spin" /> Loading...
                     </div>
                   ) : content ? (
-                    <div className="prose prose-invert prose-sm max-w-none">
-                      <ReactMarkdown>{content}</ReactMarkdown>
+                    <div className="prose prose-invert prose-sm max-w-none report-content">
+                      <ReactMarkdown remarkPlugins={[remarkGfm]} components={MARKDOWN_COMPONENTS}>{content}</ReactMarkdown>
                     </div>
                   ) : (
                     <p className="text-sm text-muted-foreground italic">
