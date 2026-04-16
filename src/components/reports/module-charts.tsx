@@ -177,7 +177,7 @@ export function IndustryCharts() {
                 <CartesianGrid strokeDasharray="3 3" stroke="oklch(0.30 0.014 260)" />
                 <XAxis dataKey="year" tick={{ fontSize: 11, fill: 'oklch(0.65 0.01 260)' }} axisLine={false} tickLine={false} />
                 <YAxis tick={{ fontSize: 10, fill: 'oklch(0.65 0.01 260)' }} axisLine={false} tickLine={false} />
-                <Tooltip contentStyle={TT} formatter={(v: number) => `$${v}M`} />
+                <Tooltip contentStyle={TT} formatter={(v) => `$${Number(v)}M`} />
                 <Bar dataKey="value" fill={COLORS[0]} radius={[4, 4, 0, 0]} name="Market Size" />
               </BarChart>
             </ResponsiveContainer>
@@ -195,7 +195,7 @@ export function IndustryCharts() {
                 <Pie data={COMPETITIVE} cx="50%" cy="50%" innerRadius={40} outerRadius={70} paddingAngle={3} dataKey="share">
                   {COMPETITIVE.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
                 </Pie>
-                <Tooltip contentStyle={TT} formatter={(v: number) => `${v}%`} />
+                <Tooltip contentStyle={TT} formatter={(v) => `${Number(v)}%`} />
               </PieChart>
             </ResponsiveContainer>
           </div>
@@ -218,7 +218,7 @@ export function IndustryCharts() {
                 <CartesianGrid strokeDasharray="3 3" stroke="oklch(0.30 0.014 260)" horizontal={false} />
                 <XAxis type="number" domain={[0, 100]} tick={{ fontSize: 10, fill: 'oklch(0.65 0.01 260)' }} axisLine={false} tickLine={false} />
                 <YAxis type="category" dataKey="driver" width={110} tick={{ fontSize: 10, fill: 'oklch(0.65 0.01 260)' }} axisLine={false} tickLine={false} />
-                <Tooltip contentStyle={TT} formatter={(v: number) => `${v}/100`} />
+                <Tooltip contentStyle={TT} formatter={(v) => `${Number(v)}/100`} />
                 <Bar dataKey="impact" fill={COLORS[0]} radius={[0, 4, 4, 0]} name="Impact Score" />
               </BarChart>
             </ResponsiveContainer>
@@ -290,7 +290,7 @@ export function DDCharts() {
                 <Pie data={REVENUE_QUALITY} cx="50%" cy="50%" innerRadius={40} outerRadius={70} paddingAngle={3} dataKey="value">
                   {REVENUE_QUALITY.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
                 </Pie>
-                <Tooltip contentStyle={TT} formatter={(v: number) => `${v}%`} />
+                <Tooltip contentStyle={TT} formatter={(v) => `${Number(v)}%`} />
               </PieChart>
             </ResponsiveContainer>
           </div>
@@ -336,7 +336,7 @@ export function DDCharts() {
                 <CartesianGrid strokeDasharray="3 3" stroke="oklch(0.30 0.014 260)" horizontal={false} />
                 <XAxis type="number" domain={[0, 100]} tick={{ fontSize: 10, fill: 'oklch(0.65 0.01 260)' }} axisLine={false} tickLine={false} />
                 <YAxis type="category" dataKey="area" width={110} tick={{ fontSize: 10, fill: 'oklch(0.65 0.01 260)' }} axisLine={false} tickLine={false} />
-                <Tooltip contentStyle={TT} formatter={(v: number) => `${v}/100`} />
+                <Tooltip contentStyle={TT} formatter={(v) => `${Number(v)}/100`} />
                 <Bar dataKey="score" radius={[0, 4, 4, 0]} name="Score">
                   {CONTROL_SCORES.map((entry, i) => (
                     <Cell key={i} fill={entry.score >= 70 ? COLORS[0] : entry.score >= 50 ? 'oklch(0.70 0.15 50)' : 'oklch(0.65 0.18 25)'} />
@@ -399,7 +399,7 @@ export function ValuationCharts() {
                 <CartesianGrid strokeDasharray="3 3" stroke="oklch(0.30 0.014 260)" />
                 <XAxis dataKey="name" tick={{ fontSize: 9, fill: 'oklch(0.65 0.01 260)' }} axisLine={false} tickLine={false} />
                 <YAxis tick={{ fontSize: 10, fill: 'oklch(0.65 0.01 260)' }} axisLine={false} tickLine={false} tickFormatter={(v: number) => `${(v / 1000).toFixed(0)}K`} />
-                <Tooltip contentStyle={TT} formatter={(v: number) => `$${v.toLocaleString()}`} />
+                <Tooltip contentStyle={TT} formatter={(v) => `$${Number(v).toLocaleString()}`} />
                 <Bar dataKey="value" radius={[4, 4, 0, 0]} name="Value">
                   {DCF_WATERFALL.map((entry, i) => (
                     <Cell key={i} fill={entry.value < 0 ? 'oklch(0.65 0.18 25)' : i === DCF_WATERFALL.length - 1 ? COLORS[2] : COLORS[0]} />
@@ -420,7 +420,7 @@ export function ValuationCharts() {
                 <CartesianGrid strokeDasharray="3 3" stroke="oklch(0.30 0.014 260)" />
                 <XAxis dataKey="name" tick={{ fontSize: 8, fill: 'oklch(0.65 0.01 260)' }} axisLine={false} tickLine={false} />
                 <YAxis tick={{ fontSize: 10, fill: 'oklch(0.65 0.01 260)' }} axisLine={false} tickLine={false} />
-                <Tooltip contentStyle={TT} formatter={(v: number) => `${v.toFixed(1)}x`} />
+                <Tooltip contentStyle={TT} formatter={(v) => `${Number(v).toFixed(1)}x`} />
                 <Bar dataKey="pe" fill={COLORS[0]} name="P/E" radius={[4, 4, 0, 0]} />
                 <Bar dataKey="evEbitda" fill={COLORS[1]} name="EV/EBITDA" radius={[4, 4, 0, 0]} />
               </BarChart>
@@ -467,7 +467,7 @@ export function ValuationCharts() {
                 <CartesianGrid strokeDasharray="3 3" stroke="oklch(0.30 0.014 260)" />
                 <XAxis dataKey="year" tick={{ fontSize: 10, fill: 'oklch(0.65 0.01 260)' }} axisLine={false} tickLine={false} />
                 <YAxis domain={[25, 45]} tick={{ fontSize: 10, fill: 'oklch(0.65 0.01 260)' }} axisLine={false} tickLine={false} unit="%" />
-                <Tooltip contentStyle={TT} formatter={(v: number) => `${v.toFixed(1)}%`} />
+                <Tooltip contentStyle={TT} formatter={(v) => `${Number(v).toFixed(1)}%`} />
                 <Area type="monotone" dataKey="ebit" stroke={COLORS[0]} fill={COLORS[0]} fillOpacity={0.2} name="EBIT Margin" />
                 <Area type="monotone" dataKey="net" stroke={COLORS[1]} fill={COLORS[1]} fillOpacity={0.2} name="Net Margin" />
               </AreaChart>
