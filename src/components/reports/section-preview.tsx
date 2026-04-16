@@ -9,7 +9,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { ChartBlock, parseChartSpec } from './chart-block';
 
-const MARKDOWN_COMPONENTS = {
+export const MARKDOWN_COMPONENTS = {
   code({ className, children, ...props }: React.HTMLAttributes<HTMLElement> & { className?: string; children?: React.ReactNode }) {
     const lang = /language-(\w+)/.exec(className || '')?.[1];
     if (lang === 'chart') {

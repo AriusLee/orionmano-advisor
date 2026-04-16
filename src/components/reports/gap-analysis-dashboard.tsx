@@ -5,6 +5,7 @@ import { createPortal } from 'react-dom';
 import { apiJson } from '@/lib/api';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { StatCard, splitMetricValue, type StatTone } from '@/components/ui/stat-card';
 import { Loader2, Shield, DollarSign, Calendar, AlertTriangle, Clock, CheckCircle2, XCircle, HelpCircle, ChevronRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -343,48 +344,40 @@ export function GapAnalysisDashboard({ companyId }: { companyId: string }) {
       {/* ─── Overall Readiness Banner ─── */}
       {overall && overall.rating && (() => {
         const rLower = overall.rating.toLowerCase();
-        const readinessTone =
-          rLower.includes('not ready') ? 'text-red-400' :
-          rLower.includes('conditional') ? 'text-amber-400' :
-          'text-emerald-400';
+        const readinessTone: StatTone =
+          rLower.includes('not ready') ? 'danger' :
+          rLower.includes('conditional') ? 'warn' :
+          'positive';
         const recLower = overall.recommendation.toLowerCase();
-        const recTone =
-          recLower.startsWith('no-go') || recLower.startsWith('no go') ? 'text-red-400' :
-          recLower.startsWith('conditional') || recLower.includes('caution') ? 'text-amber-400' :
-          'text-emerald-400';
+        const recTone: StatTone =
+          recLower.startsWith('no-go') || recLower.startsWith('no go') ? 'danger' :
+          recLower.startsWith('conditional') || recLower.includes('caution') ? 'warn' :
+          'positive';
 
-        type Metric = { label: string; value: string; icon: typeof Shield; valueTone?: string };
+        type Metric = { label: string; value: string; icon: typeof Shield; tone?: StatTone };
         const metrics: Metric[] = [
-          { label: 'IPO Readiness',   value: overall.rating,                               icon: Shield,         valueTone: readinessTone },
+          { label: 'IPO Readiness',   value: overall.rating,                               icon: Shield,         tone: readinessTone },
           { label: 'Time to Ready',   value: overall.timeEstimate,                         icon: Calendar },
           { label: 'Est. Total Cost', value: costSummary.total || overall.totalCost || '', icon: DollarSign },
-          { label: 'Recommendation',  value: overall.recommendation,                       icon: AlertTriangle,  valueTone: recTone },
+          { label: 'Recommendation',  value: overall.recommendation,                       icon: AlertTriangle,  tone: recTone },
         ].filter(m => m.value);
 
         return (
-          <Card size="sm">
-            <CardContent className="py-1">
-              <div className="grid gap-x-6 gap-y-3 sm:grid-cols-2 xl:grid-cols-4">
-                {metrics.map((m, i) => (
-                  <div
-                    key={m.label}
-                    className={cn(
-                      'flex items-center gap-3 min-w-0',
-                      i > 0 && 'xl:border-l xl:border-border/60 xl:pl-6'
-                    )}
-                  >
-                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-muted/50 ring-1 ring-inset ring-border">
-                      <m.icon className="h-4 w-4 text-muted-foreground" />
-                    </div>
-                    <div className="min-w-0">
-                      <p className="text-[10px] uppercase tracking-[0.12em] text-muted-foreground/80">{m.label}</p>
-                      <p className={cn('mt-0.5 text-sm font-semibold line-clamp-2', m.valueTone)}>{m.value}</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+            {metrics.map((m) => {
+              const split = splitMetricValue(m.value);
+              return (
+                <StatCard
+                  key={m.label}
+                  icon={m.icon}
+                  label={m.label}
+                  value={split.value}
+                  subValue={split.subValue}
+                  tone={m.tone}
+                />
+              );
+            })}
+          </div>
         );
       })()}
 

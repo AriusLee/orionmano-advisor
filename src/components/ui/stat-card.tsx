@@ -41,6 +41,9 @@ const TONE_STYLES: Record<StatTone, { rule: string; iconBg: string; iconRing: st
 export interface StatCardProps {
   label: string;
   value: string;
+  /** Optional small qualifier rendered after the main value at a smaller size,
+   * e.g., value="12-18", subValue="months from today". */
+  subValue?: string;
   icon: LucideIcon;
   caption?: React.ReactNode;
   /**
@@ -52,7 +55,7 @@ export interface StatCardProps {
   accent?: 'warn';
 }
 
-export function StatCard({ label, value, icon: Icon, caption, tone, accent }: StatCardProps) {
+export function StatCard({ label, value, subValue, icon: Icon, caption, tone, accent }: StatCardProps) {
   const resolved: StatTone = tone ?? (accent === 'warn' ? 'warn' : 'primary');
   const styles = TONE_STYLES[resolved];
 
@@ -67,9 +70,20 @@ export function StatCard({ label, value, icon: Icon, caption, tone, accent }: St
           <Icon className={cn('h-3.5 w-3.5', styles.iconColor)} strokeWidth={2} />
         </div>
       </div>
-      <p className={cn('font-numeric relative mt-3 truncate text-xl font-semibold tracking-tight', styles.valueColor)}>
-        {value}
-      </p>
+      <div className="relative mt-2.5">
+        <p className={cn(
+          'font-numeric truncate font-semibold leading-tight tracking-tight',
+          subValue ? 'text-base' : 'text-xl',
+          styles.valueColor,
+        )}>
+          {value}
+        </p>
+        {subValue && (
+          <p className="truncate text-[11px] font-normal leading-tight text-muted-foreground">
+            {subValue}
+          </p>
+        )}
+      </div>
       {caption !== undefined && caption !== null && caption !== '' && (
         <div className="relative mt-1 truncate text-xs text-muted-foreground">
           {caption}
@@ -77,4 +91,34 @@ export function StatCard({ label, value, icon: Icon, caption, tone, accent }: St
       )}
     </article>
   );
+}
+
+/**
+ * Heuristic split for long metric strings: returns a `value` (the headline
+ * — typically a number range or short verdict) and a `subValue` (the qualifier).
+ *
+ *   "12-18 months from today."     → { value: "12-18", subValue: "months from today" }
+ *   "No-Go for an immediate IPO"   → { value: "No-Go", subValue: "for an immediate IPO" }
+ *   "Not Ready"                    → { value: "Not Ready" }
+ *   "USD 1.2M"                     → { value: "USD 1.2M" }
+ */
+export function splitMetricValue(raw: string): { value: string; subValue?: string } {
+  if (!raw) return { value: raw };
+  const cleaned = raw.replace(/\s+/g, ' ').trim();
+
+  // Pattern A: starts with a number / number range (incl. units like "12-18", "USD 1.2M", "$1M")
+  // and is followed by descriptive text.
+  const num = cleaned.match(/^((?:USD|RMB|HKD|EUR|GBP|MYR|SGD|\$|£|€|¥)?\s*[\d.,]+(?:\s*[-–]\s*[\d.,]+)?(?:\s*[KMB%]+\b)?)\s+(.+)$/i);
+  if (num) {
+    return { value: num[1].trim(), subValue: num[2].replace(/\.$/, '').trim() };
+  }
+
+  // Pattern B: starts with a short verdict keyword
+  const kw = cleaned.match(/^(No-?Go|Go|Yes|No|Ready|Not Ready|Conditional|Caution|Approve|Reject|Pass|Fail)\b\s+(.+)$/i);
+  if (kw) {
+    return { value: kw[1].trim(), subValue: kw[2].replace(/\.$/, '').trim() };
+  }
+
+  // Otherwise leave as a single value (caller can still pass subValue explicitly)
+  return { value: cleaned.replace(/\.$/, '') };
 }

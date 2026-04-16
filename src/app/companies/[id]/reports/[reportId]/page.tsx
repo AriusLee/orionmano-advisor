@@ -19,6 +19,7 @@ import {
 import { toast } from "sonner";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { ChartBlock, parseChartSpec } from "@/components/reports/chart-block";
 import { cn } from "@/lib/utils";
 
 interface ReportSection {
@@ -124,6 +125,17 @@ const markdownComponents: Components = {
   ),
   hr: () => <hr className="my-6 border-border/50" />,
   code: ({ children, className }) => {
+    const lang = /language-(\w+)/.exec(className || "")?.[1];
+    if (lang === "chart") {
+      const raw = String(children ?? "").trim();
+      const spec = parseChartSpec(raw);
+      if (spec) return <ChartBlock spec={spec} />;
+      return (
+        <pre className="my-4 rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-[12px] text-destructive/80">
+          Invalid chart spec
+        </pre>
+      );
+    }
     const isBlock = className?.startsWith("language-");
     if (isBlock) {
       return (
@@ -138,11 +150,20 @@ const markdownComponents: Components = {
       </code>
     );
   },
-  pre: ({ children }) => (
-    <pre className="my-4 overflow-x-auto rounded-lg border border-border/50 bg-background/60 p-4 text-[12.5px] shadow-inner">
-      {children}
-    </pre>
-  ),
+  pre: ({ children }) => {
+    // If the <pre> wraps a chart code block, the inner `code` renderer has
+    // already returned a <ChartBlock>; passing it through <pre> would nest
+    // a div inside <pre> and break layout. Detect and pass-through.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const child: any = Array.isArray(children) ? children[0] : children;
+    const lang = child?.props?.className?.match?.(/language-(\w+)/)?.[1];
+    if (lang === "chart") return <>{children}</>;
+    return (
+      <pre className="my-4 overflow-x-auto rounded-lg border border-border/50 bg-background/60 p-4 text-[12.5px] shadow-inner">
+        {children}
+      </pre>
+    );
+  },
   table: ({ children }) => (
     <div className="my-5 overflow-x-auto rounded-lg border border-border/50 bg-card/40">
       <table className="w-full border-collapse text-[13px]">{children}</table>

@@ -20,6 +20,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { cn } from '@/lib/utils';
 import { ChartBlock, parseChartSpec, type ChartSpec } from './chart-block';
+import { MARKDOWN_COMPONENTS } from './section-preview';
 
 const COLORS = [
   'oklch(0.75 0.15 175)',
@@ -615,7 +616,7 @@ function FullReportModal({ report, open, onOpenChange }: { report: Report; open:
               <section key={s.section_key}>
                 <h2 className="mb-2 border-b border-border pb-1.5 text-base font-semibold">{s.section_title}</h2>
                 <div className="prose prose-invert prose-sm max-w-none report-content">
-                  <ReactMarkdown remarkPlugins={[remarkGfm]}>{s.content || ''}</ReactMarkdown>
+                  <ReactMarkdown remarkPlugins={[remarkGfm]} components={MARKDOWN_COMPONENTS}>{s.content || ''}</ReactMarkdown>
                 </div>
               </section>
             ))}
