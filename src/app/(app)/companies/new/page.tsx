@@ -1,14 +1,13 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
-import { apiJson, apiFetch } from '@/lib/api';
+import { apiJson } from '@/lib/api';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { ArrowLeft, Upload, Loader2, X, FileText } from 'lucide-react';
+import { ArrowLeft, Loader2, Sparkles } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 
@@ -25,17 +24,14 @@ const COMPANY_TYPES = [
 export default function CreateCompanyPage() {
   const { user, loading: authLoading } = useAuth();
   const router = useRouter();
-  const inputRef = useRef<HTMLInputElement>(null);
   const [creating, setCreating] = useState(false);
-  const [dragOver, setDragOver] = useState(false);
-  const [files, setFiles] = useState<File[]>([]);
   const [form, setForm] = useState({
     legal_name: '',
     name: '',
     registration_number: '',
     company_type: '',
     industry: '',
-    country: '',
+    country: 'Malaysia',
     website: '',
   });
 
@@ -43,17 +39,10 @@ export default function CreateCompanyPage() {
     if (!authLoading && !user) router.replace('/login');
   }, [user, authLoading, router]);
 
-  const update = (key: string, value: string) => setForm(prev => ({ ...prev, [key]: value }));
+  const update = (key: keyof typeof form, value: string) =>
+    setForm((prev) => ({ ...prev, [key]: value }));
 
-  const handleDrop = (e: React.DragEvent) => {
-    e.preventDefault();
-    setDragOver(false);
-    setFiles(prev => [...prev, ...Array.from(e.dataTransfer.files)]);
-  };
-
-  const removeFile = (index: number) => {
-    setFiles(prev => prev.filter((_, i) => i !== index));
-  };
+  const canSubmit = form.legal_name.trim().length > 0 && form.country.trim().length > 0 && !creating;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -76,18 +65,7 @@ export default function CreateCompanyPage() {
         }),
       });
 
-      // Upload files if any
-      for (const file of files) {
-        const formData = new FormData();
-        formData.append('file', file);
-        formData.append('category', 'other');
-        await apiFetch(`/companies/${company.id}/documents/upload`, {
-          method: 'POST',
-          body: formData,
-        });
-      }
-
-      toast.success('Company created');
+      toast.success('Company created — documents can be uploaded from the action panel');
       router.push(`/companies/${company.id}`);
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : 'Failed to create company');
@@ -100,188 +78,175 @@ export default function CreateCompanyPage() {
 
   return (
     <div className="min-h-screen bg-background">
-      <div className="mx-auto max-w-2xl px-6 py-8">
+      <div className="mx-auto max-w-2xl px-6 py-10">
         {/* Header */}
         <div className="mb-8 flex items-start gap-3">
-          <Button
-            variant="ghost"
-            size="icon"
-            className="mt-1 cursor-pointer"
+          <button
+            type="button"
             onClick={() => router.push('/companies')}
+            className="mt-1 flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors cursor-pointer hover:bg-muted hover:text-foreground"
+            aria-label="Back to companies"
           >
-            <ArrowLeft className="h-5 w-5" />
-          </Button>
+            <ArrowLeft className="h-4 w-4" />
+          </button>
           <div>
             <h1 className="text-2xl font-semibold tracking-tight">Create Company</h1>
-            <p className="text-sm text-muted-foreground">
-              Add a new company to begin advisory analysis.
+            <p className="mt-1 text-sm text-muted-foreground">
+              Give us the basics — AI will handle the rest.
             </p>
           </div>
         </div>
 
-        <form onSubmit={handleSubmit}>
-          {/* Company Details */}
-          <Card className="mb-6">
-            <CardHeader>
-              <CardTitle className="text-base">Company Details</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div className="space-y-2">
-                  <Label>Legal Name <span className="text-destructive">*</span></Label>
-                  <Input
-                    value={form.legal_name}
-                    onChange={(e) => update('legal_name', e.target.value)}
-                    placeholder="e.g. HAAS Continuum Limited"
-                    required
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Brand Name</Label>
-                  <Input
-                    value={form.name}
-                    onChange={(e) => update('name', e.target.value)}
-                    placeholder="e.g. Smart Rental"
-                  />
-                </div>
-              </div>
+        <form onSubmit={handleSubmit} className="space-y-6">
+          {/* Basics */}
+          <section className="rounded-xl border border-border/60 bg-card/40 p-5 space-y-5">
+            <SectionHeader label="Basics" />
 
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div className="space-y-2">
-                  <Label>Registration Number</Label>
-                  <Input
-                    value={form.registration_number}
-                    onChange={(e) => update('registration_number', e.target.value)}
-                    placeholder="e.g. 12345678"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Company Type</Label>
-                  <select
-                    value={form.company_type}
-                    onChange={(e) => update('company_type', e.target.value)}
-                    className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm cursor-pointer"
-                  >
-                    <option value="">Select type</option>
-                    {COMPANY_TYPES.map(t => (
-                      <option key={t} value={t}>{t}</option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div className="space-y-2">
-                  <Label>Primary Industry</Label>
-                  <Input
-                    value={form.industry}
-                    onChange={(e) => update('industry', e.target.value)}
-                    placeholder="e.g. F&B, Technology, Logistics"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Country <span className="text-destructive">*</span></Label>
-                  <Input
-                    value={form.country}
-                    onChange={(e) => update('country', e.target.value)}
-                    placeholder="e.g. Malaysia"
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <Label>Websites</Label>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field label="Legal Name" required>
                 <Input
-                  value={form.website}
-                  onChange={(e) => update('website', e.target.value)}
-                  placeholder="https://example.com, https://brand.com"
+                  value={form.legal_name}
+                  onChange={(e) => update('legal_name', e.target.value)}
+                  placeholder="HAAS Continuum Limited"
+                  required
                 />
-                <p className="text-xs text-muted-foreground">Separate multiple URLs with commas</p>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Company Materials */}
-          <Card className="mb-6">
-            <CardHeader>
-              <CardTitle className="text-base">
-                Company Materials <span className="text-muted-foreground font-normal">(optional)</span>
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div
-                className={cn(
-                  'flex flex-col items-center justify-center rounded-lg border-2 border-dashed p-10 transition-colors cursor-pointer',
-                  dragOver ? 'border-primary bg-primary/5' : 'border-muted-foreground/25 hover:border-primary/50'
-                )}
-                onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
-                onDragLeave={() => setDragOver(false)}
-                onDrop={handleDrop}
-                onClick={() => inputRef.current?.click()}
-              >
-                <Upload className="mb-3 h-10 w-10 text-muted-foreground/50" />
-                <p className="text-sm font-medium">Drop company materials here</p>
-                <p className="text-xs text-muted-foreground">or click to browse files</p>
-                <p className="mt-2 text-xs text-muted-foreground/70">
-                  PDF, DOC, DOCX, XLS, XLSX, PPT, PPTX, TXT, images
-                </p>
-                <input
-                  ref={inputRef}
-                  type="file"
-                  className="hidden"
-                  multiple
-                  accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.md,.png,.jpg,.jpeg"
-                  onChange={(e) => {
-                    setFiles(prev => [...prev, ...Array.from(e.target.files || [])]);
-                    e.target.value = '';
-                  }}
+              </Field>
+              <Field label="Brand Name">
+                <Input
+                  value={form.name}
+                  onChange={(e) => update('name', e.target.value)}
+                  placeholder="Smart Rental"
                 />
-              </div>
+              </Field>
+            </div>
 
-              {files.length > 0 && (
-                <div className="space-y-2">
-                  {files.map((file, i) => (
-                    <div key={i} className="flex items-center justify-between rounded-lg border px-3 py-2">
-                      <div className="flex items-center gap-2 text-sm min-w-0">
-                        <FileText className="h-4 w-4 text-muted-foreground shrink-0" />
-                        <span className="truncate">{file.name}</span>
-                        <span className="text-xs text-muted-foreground shrink-0">
-                          {file.size < 1048576 ? `${(file.size / 1024).toFixed(0)} KB` : `${(file.size / 1048576).toFixed(1)} MB`}
-                        </span>
-                      </div>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon"
-                        className="h-7 w-7 cursor-pointer text-muted-foreground hover:text-destructive"
-                        onClick={() => removeFile(i)}
-                      >
-                        <X className="h-3 w-3" />
-                      </Button>
-                    </div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field label="Registration Number">
+                <Input
+                  value={form.registration_number}
+                  onChange={(e) => update('registration_number', e.target.value)}
+                  placeholder="12345678"
+                />
+              </Field>
+              <Field label="Company Type">
+                <select
+                  value={form.company_type}
+                  onChange={(e) => update('company_type', e.target.value)}
+                  className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm cursor-pointer transition-colors focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:outline-none"
+                >
+                  <option value="">Select type…</option>
+                  {COMPANY_TYPES.map((t) => (
+                    <option key={t} value={t}>{t}</option>
                   ))}
-                </div>
-              )}
-            </CardContent>
-          </Card>
+                </select>
+              </Field>
+            </div>
+          </section>
+
+          {/* Context */}
+          <section className="rounded-xl border border-border/60 bg-card/40 p-5 space-y-5">
+            <SectionHeader label="Context" />
+
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field label="Primary Industry">
+                <Input
+                  value={form.industry}
+                  onChange={(e) => update('industry', e.target.value)}
+                  placeholder="F&B, Technology, Logistics"
+                />
+              </Field>
+              <Field label="Country" required>
+                <Input
+                  value={form.country}
+                  onChange={(e) => update('country', e.target.value)}
+                  placeholder="Malaysia"
+                  required
+                />
+              </Field>
+            </div>
+
+            <Field
+              label="Website"
+              hint={
+                <span className="inline-flex items-center gap-1">
+                  <Sparkles className="h-3 w-3 text-primary/70" />
+                  Leave blank — AI will look it up to auto-find the logo.
+                </span>
+              }
+            >
+              <Input
+                value={form.website}
+                onChange={(e) => update('website', e.target.value)}
+                placeholder="https://example.com"
+                type="url"
+              />
+            </Field>
+          </section>
 
           {/* Actions */}
-          <div className="flex gap-3">
-            <Button type="submit" disabled={creating || !form.legal_name.trim()} className="cursor-pointer gap-2">
-              {creating ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-              {creating ? 'Creating...' : 'Create Company'}
-            </Button>
+          <div className="flex items-center justify-end gap-3 pt-1">
             <Button
               type="button"
-              variant="outline"
+              variant="ghost"
               className="cursor-pointer"
               onClick={() => router.push('/companies')}
+              disabled={creating}
             >
               Cancel
             </Button>
+            <button
+              type="submit"
+              disabled={!canSubmit}
+              className={cn(
+                'group relative inline-flex h-10 items-center gap-2 rounded-lg bg-primary px-5 text-sm font-medium text-primary-foreground shadow-[0_4px_14px_-4px_oklch(from_var(--primary)_l_c_h_/_0.5),inset_0_1px_0_oklch(1_0_0/0.2)] transition-all duration-150',
+                canSubmit
+                  ? 'cursor-pointer hover:brightness-110 hover:shadow-[0_6px_20px_-4px_oklch(from_var(--primary)_l_c_h_/_0.6),inset_0_1px_0_oklch(1_0_0/0.25)] active:brightness-95 active:translate-y-px'
+                  : 'opacity-60 cursor-not-allowed',
+              )}
+            >
+              {creating && <Loader2 className="h-4 w-4 animate-spin" />}
+              {creating ? 'Creating…' : 'Create Company'}
+            </button>
           </div>
         </form>
+
+        {/* Post-create hint — tells the user where uploads now live */}
+        <p className="mt-6 text-[11px] text-muted-foreground/70 text-center">
+          Documents can be uploaded from the Documents tab in the company action panel after creation.
+        </p>
       </div>
+    </div>
+  );
+}
+
+function SectionHeader({ label }: { label: string }) {
+  return (
+    <div className="flex items-center gap-2">
+      <span className="h-px flex-1 bg-border/60 max-w-[12px]" />
+      <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+        {label}
+      </p>
+      <span className="h-px flex-1 bg-border/60" />
+    </div>
+  );
+}
+
+interface FieldProps {
+  label: string;
+  required?: boolean;
+  hint?: React.ReactNode;
+  children: React.ReactNode;
+}
+
+function Field({ label, required, hint, children }: FieldProps) {
+  return (
+    <div className="space-y-1.5">
+      <Label className="text-[11px] font-medium text-muted-foreground">
+        {label}
+        {required && <span className="ml-0.5 text-destructive">*</span>}
+      </Label>
+      {children}
+      {hint && <p className="text-[10px] text-muted-foreground/70">{hint}</p>}
     </div>
   );
 }
