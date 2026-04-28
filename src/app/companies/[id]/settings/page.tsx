@@ -40,7 +40,15 @@ interface Member {
 
 const STATUS_OPTIONS = ['active', 'on_hold', 'completed', 'archived'];
 const ENGAGEMENT_OPTIONS = ['ipo', 'fundraising', 'ma', 'compliance', 'valuation', 'due_diligence'];
-const EXCHANGE_OPTIONS = ['nasdaq', 'nyse', 'bursa_main', 'bursa_ace', 'hkex', 'sgx', 'other'];
+const EXCHANGE_OPTIONS = [
+  'nasdaq',
+  'nasdaq_capital',
+  'nasdaq_global',
+  'nasdaq_global_select',
+  'nyse',
+  'nyse_american',
+  'other',
+];
 
 const TIER_OPTIONS = [
   {

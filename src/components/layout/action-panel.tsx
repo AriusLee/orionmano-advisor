@@ -64,7 +64,7 @@ interface ReportTypeConfig {
 const REPORT_TYPES: ReportTypeConfig[] = [
   { id: 'gap_analysis',    label: 'Gap Analysis',    desc: 'Nasdaq IPO readiness assessment',   icon: ClipboardCheck, accent: 'text-emerald-400' },
   { id: 'industry_report', label: 'Industry Expert', desc: 'Market research & competitive scan', icon: Globe,          accent: 'text-blue-400' },
-  { id: 'dd_report',       label: 'Due Diligence',   desc: 'Financial DD & internal controls',   icon: FileSearch,     accent: 'text-amber-400', disabled: true },
+  { id: 'dd_report',       label: 'Due Diligence',   desc: 'Transaction-grade FDD — QoE bridge, net debt, key findings', icon: FileSearch,     accent: 'text-amber-400' },
   { id: 'valuation_report',label: 'Valuation',       desc: 'DCF, comps & sensitivity analysis',  icon: BarChart3,      accent: 'text-purple-400', disabled: true },
 ];
 
