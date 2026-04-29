@@ -59,13 +59,19 @@ interface ReportTypeConfig {
   icon: LucideIcon;
   accent: string;
   disabled?: boolean;
+  /**
+   * If set, clicking the row navigates to /companies/{id}{customRoute} instead
+   * of triggering /reports/generate. Used for module pages that own their own
+   * generation flow (e.g. valuation produces an xlsx workpaper, not a report row).
+   */
+  customRoute?: string;
 }
 
 const REPORT_TYPES: ReportTypeConfig[] = [
   { id: 'gap_analysis',    label: 'Gap Analysis',    desc: 'Nasdaq IPO readiness assessment',   icon: ClipboardCheck, accent: 'text-emerald-400' },
   { id: 'industry_report', label: 'Industry Expert', desc: 'Market research & competitive scan', icon: Globe,          accent: 'text-blue-400' },
   { id: 'dd_report',       label: 'Due Diligence',   desc: 'Transaction-grade FDD — QoE bridge, net debt, key findings', icon: FileSearch,     accent: 'text-amber-400' },
-  { id: 'valuation_report',label: 'Valuation',       desc: 'DCF, comps & sensitivity analysis',  icon: BarChart3,      accent: 'text-purple-400', disabled: true },
+  { id: 'valuation_report',label: 'Valuation',       desc: 'DCF workpaper — WACC, comps & sensitivity (Excel)',  icon: BarChart3,      accent: 'text-purple-400', customRoute: '/valuation' },
 ];
 
 const REPORT_TYPE_LABELS: Record<string, string> = REPORT_TYPES.reduce((acc, t) => ({ ...acc, [t.id]: t.label }), {});
@@ -289,11 +295,21 @@ export function ActionPanel({ companyId }: ActionPanelProps) {
                           <div className="flex items-stretch pl-3">
                             {/* Main click target (latest report OR empty) */}
                             <button
-                              onClick={() => !isDisabled && latest && !isGenerating && router.push(`/companies/${companyId}/reports/${latest.id}`)}
-                              disabled={isDisabled || !latest || isGenerating}
+                              onClick={() => {
+                                if (isDisabled) return;
+                                if (type.customRoute) {
+                                  router.push(`/companies/${companyId}${type.customRoute}`);
+                                  return;
+                                }
+                                if (latest && !isGenerating) {
+                                  router.push(`/companies/${companyId}/reports/${latest.id}`);
+                                }
+                              }}
+                              disabled={isDisabled || (!type.customRoute && (!latest || isGenerating))}
                               className={cn(
                                 'flex-1 flex items-start gap-3 px-2 py-2.5 text-left transition-colors',
                                 isDisabled ? 'cursor-not-allowed' :
+                                  type.customRoute ? 'cursor-pointer hover:bg-foreground/[0.03]' :
                                   latest && !isGenerating ? 'cursor-pointer hover:bg-foreground/[0.03]' : 'cursor-default'
                               )}
                             >
@@ -311,6 +327,8 @@ export function ActionPanel({ companyId }: ActionPanelProps) {
                                 </div>
                                 {isDisabled ? (
                                   <p className="text-[11px] text-muted-foreground/60 mt-1">Coming soon</p>
+                                ) : type.customRoute ? (
+                                  <p className="text-[11px] text-muted-foreground/70 mt-1 truncate">{type.desc}</p>
                                 ) : latest ? (
                                   <div className="flex items-center gap-1.5 mt-1 text-[11px] text-muted-foreground">
                                     {statusCfg && (
@@ -495,11 +513,20 @@ export function ActionPanel({ companyId }: ActionPanelProps) {
             {REPORT_TYPES.map((opt) => {
               const OptIcon = opt.icon;
               const isDisabled = !!opt.disabled;
+              const handleClick = () => {
+                if (isDisabled) return;
+                if (opt.customRoute) {
+                  setShowGenDialog(false);
+                  router.push(`/companies/${companyId}${opt.customRoute}`);
+                  return;
+                }
+                handleGenerate(opt.id);
+              };
               return (
                 <button
                   key={opt.id}
-                  onClick={() => !isDisabled && handleGenerate(opt.id)}
-                  disabled={generating || isDisabled}
+                  onClick={handleClick}
+                  disabled={(generating && !opt.customRoute) || isDisabled}
                   className={cn(
                     'w-full flex items-center gap-3 rounded-lg border px-4 py-3 text-left transition-colors',
                     isDisabled

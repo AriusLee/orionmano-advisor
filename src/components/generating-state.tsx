@@ -14,6 +14,16 @@ interface GeneratingStateProps {
   startedAt?: string | null;
   /** Number of sections written so far (optional — shown when available). */
   sectionsGenerated?: number;
+  /** Override the default "Analyzing uploaded documents…" subtitle. */
+  description?: string;
+  /**
+   * When false, the bottom status chip warns the user not to navigate away.
+   * Defaults to true (work runs server-side, navigation is safe). Set to
+   * false for synchronous client-bound calls like the valuation workpaper.
+   */
+  safeToNavigate?: boolean;
+  /** Custom text to show in the unit slot of the progress card (replaces "X sections drafted"). */
+  unitLabel?: string;
 }
 
 const HALO_GRADIENT =
@@ -38,6 +48,9 @@ export function GeneratingState({
   progressMessage,
   startedAt,
   sectionsGenerated,
+  description,
+  safeToNavigate = true,
+  unitLabel,
 }: GeneratingStateProps) {
   const [now, setNow] = useState(() => Date.now());
 
@@ -47,6 +60,17 @@ export function GeneratingState({
   }, []);
 
   const elapsed = startedAt ? now - new Date(startedAt).getTime() : null;
+  const subtitle =
+    description ??
+    'Analyzing uploaded documents and drafting each section with the DeepSeek reasoning model. This usually takes 2–4 minutes.';
+  const chipLabel = safeToNavigate
+    ? 'Generation in progress — safe to navigate away'
+    : 'Generation in progress — keep this tab open';
+  const unitText =
+    unitLabel ??
+    (typeof sectionsGenerated === 'number' && sectionsGenerated > 0
+      ? `${sectionsGenerated} section${sectionsGenerated === 1 ? '' : 's'} drafted`
+      : 'Warming up…');
 
   return (
     <div className="relative flex min-h-[65vh] flex-col items-center justify-center overflow-hidden py-12">
@@ -99,7 +123,7 @@ export function GeneratingState({
       </h2>
 
       <p className="relative mb-7 max-w-md text-center text-sm leading-relaxed text-muted-foreground">
-        Analyzing uploaded documents and drafting each section with the DeepSeek reasoning model. This usually takes 2–4 minutes.
+        {subtitle}
       </p>
 
       {/* Progress card */}
@@ -121,9 +145,7 @@ export function GeneratingState({
 
           <div className="flex items-center justify-between text-[11px] text-muted-foreground">
             <span className="font-mono tabular-nums">
-              {typeof sectionsGenerated === 'number' && sectionsGenerated > 0
-                ? `${sectionsGenerated} section${sectionsGenerated === 1 ? '' : 's'} drafted`
-                : 'Warming up…'}
+              {unitText}
             </span>
             {elapsed !== null && (
               <span className="font-mono tabular-nums text-muted-foreground/70">
@@ -145,7 +167,7 @@ export function GeneratingState({
           <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary opacity-70" />
           <span className="relative inline-flex h-2 w-2 rounded-full bg-primary" />
         </span>
-        Generation in progress — safe to navigate away
+        {chipLabel}
       </div>
     </div>
   );
