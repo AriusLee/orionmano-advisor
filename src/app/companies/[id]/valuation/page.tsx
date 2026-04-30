@@ -10,9 +10,10 @@ import {
   Sparkles,
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { apiJson, uploadUrl } from '@/lib/api';
+import { apiJson, apiFetch, uploadUrl } from '@/lib/api';
 import { EmptyDataState } from '@/components/empty-data-state';
 import { GeneratingState } from '@/components/generating-state';
+import { ValuationDashboard, type ValuationSummary } from '@/components/reports/valuation-dashboard';
 
 interface Document {
   id: string;
@@ -35,6 +36,16 @@ interface WorkpaperResult {
   warnings: string[];
   errors: string[];
   generatedAt: string;
+  summary?: ValuationSummary | null;
+}
+
+interface LatestSummary {
+  generated_at: string;
+  xlsx_url: string;
+  xlsx_filename: string;
+  warnings: string[];
+  errors: string[];
+  summary: ValuationSummary;
 }
 
 const REQUIRED_DOCS = ['audit_report', 'projections'];
@@ -55,6 +66,7 @@ export default function ValuationPage({ params }: { params: Promise<{ id: string
   const [generationStartedAt, setGenerationStartedAt] = useState<string | null>(null);
   const [progressMessage, setProgressMessage] = useState<string>('Loading extracted documents…');
   const [result, setResult] = useState<WorkpaperResult | null>(null);
+  const [latest, setLatest] = useState<LatestSummary | null>(null);
 
   useEffect(() => {
     if (!generating || !generationStartedAt) return;
@@ -74,10 +86,12 @@ export default function ValuationPage({ params }: { params: Promise<{ id: string
     Promise.all([
       apiJson<Document[]>(`/companies/${id}/documents`),
       apiJson<CompanyMeta>(`/companies/${id}`),
+      apiFetch(`/companies/${id}/valuation/latest`).then((r) => r.json()).catch(() => null),
     ])
-      .then(([d, c]) => {
+      .then(([d, c, l]) => {
         setDocs(d);
         setCompany(c);
+        if (l && l.summary) setLatest(l as LatestSummary);
       })
       .catch(() => {})
       .finally(() => setLoading(false));
@@ -97,20 +111,33 @@ export default function ValuationPage({ params }: { params: Promise<{ id: string
         xlsx_url: string | null;
         warnings: string[];
         errors: string[];
+        summary?: ValuationSummary | null;
       }>(`/companies/${id}/valuation/generate-workpaper`, { method: 'POST' });
 
       const status = res.status === 'success' || res.status === 'partial' || res.status === 'failed'
         ? (res.status as WorkpaperResult['status'])
         : 'success';
 
+      const generatedAt = new Date().toISOString();
       setResult({
         status,
         message: res.message,
         xlsx_url: res.xlsx_url,
         warnings: res.warnings ?? [],
         errors: res.errors ?? [],
-        generatedAt: new Date().toISOString(),
+        generatedAt,
+        summary: res.summary ?? null,
       });
+      if (res.summary && res.xlsx_url) {
+        setLatest({
+          generated_at: generatedAt,
+          xlsx_url: res.xlsx_url,
+          xlsx_filename: res.xlsx_url.split('/').pop() ?? 'valuation.xlsx',
+          warnings: res.warnings ?? [],
+          errors: res.errors ?? [],
+          summary: res.summary,
+        });
+      }
 
       if (status === 'success') {
         toast.success('Workpaper generated');
@@ -157,6 +184,22 @@ export default function ValuationPage({ params }: { params: Promise<{ id: string
           unitLabel="DCF + Comps + Sensitivity"
           safeToNavigate={false}
         />
+      ) : latest ? (
+        <div className="space-y-4">
+          <WorkpaperHeaderCard
+            xlsxUrl={latest.xlsx_url}
+            filename={latest.xlsx_filename}
+            generatedAt={latest.generated_at}
+            errorCount={latest.errors?.length ?? 0}
+            onRegenerate={handleGenerate}
+          />
+          <ValuationDashboard
+            summary={latest.summary}
+            generatedAt={latest.generated_at}
+            xlsxUrl={latest.xlsx_url}
+            warnings={latest.warnings}
+          />
+        </div>
       ) : result ? (
         <WorkpaperResultCard
           result={result}
@@ -183,6 +226,61 @@ export default function ValuationPage({ params }: { params: Promise<{ id: string
           }
         />
       )}
+    </div>
+  );
+}
+
+function WorkpaperHeaderCard({
+  xlsxUrl,
+  filename,
+  generatedAt,
+  errorCount,
+  onRegenerate,
+}: {
+  xlsxUrl: string;
+  filename: string;
+  generatedAt: string;
+  errorCount: number;
+  onRegenerate: () => void;
+}) {
+  const downloadHref = uploadUrl(xlsxUrl);
+  return (
+    <div className="rounded-2xl border bg-card p-4 flex items-center gap-3">
+      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 ring-1 ring-primary/20">
+        <FileSpreadsheet className="h-5 w-5 text-primary" />
+      </div>
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2">
+          <h2 className="text-sm font-semibold tracking-tight">Latest workpaper</h2>
+          {errorCount > 0 && (
+            <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/10 px-2 py-0.5 text-[10px] font-medium text-amber-600 ring-1 ring-amber-500/30">
+              <AlertTriangle className="h-2.5 w-2.5" /> {errorCount} validation
+            </span>
+          )}
+        </div>
+        <p className="font-mono text-[11px] text-muted-foreground/70 truncate">
+          {filename} · {new Date(generatedAt).toLocaleString()}
+        </p>
+      </div>
+      <div className="flex shrink-0 items-center gap-2">
+        <button
+          onClick={onRegenerate}
+          className="inline-flex h-9 items-center gap-2 rounded-lg border bg-card px-3 text-sm font-medium transition-all duration-150 cursor-pointer hover:bg-muted active:translate-y-px"
+        >
+          <Sparkles className="h-3.5 w-3.5" strokeWidth={2.25} />
+          Regenerate
+        </button>
+        {downloadHref && (
+          <a
+            href={downloadHref}
+            download={filename}
+            className="inline-flex h-9 items-center gap-2 rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground shadow-[0_4px_14px_-4px_oklch(from_var(--primary)_l_c_h_/_0.5),inset_0_1px_0_oklch(1_0_0/0.2)] transition-all duration-150 cursor-pointer hover:brightness-110 active:translate-y-px"
+          >
+            <Download className="h-3.5 w-3.5" strokeWidth={2.25} />
+            Download xlsx
+          </a>
+        )}
+      </div>
     </div>
   );
 }

@@ -16,15 +16,16 @@ import {
   FileSearch,
   BarChart3,
   Trash2,
+  Download,
   type LucideIcon,
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { Badge } from '@/components/ui/badge';
 import { useCompanyStore } from '@/stores/company-store';
 import { DocumentChecklist } from '@/components/documents/document-checklist';
-import { apiJson } from '@/lib/api';
+import { apiFetch, apiJson, uploadUrl } from '@/lib/api';
 import { cn } from '@/lib/utils';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { toast } from 'sonner';
 
 interface ActionPanelProps {
@@ -65,6 +66,13 @@ interface ReportTypeConfig {
    * generation flow (e.g. valuation produces an xlsx workpaper, not a report row).
    */
   customRoute?: string;
+}
+
+interface ValuationDownloadState {
+  filename: string;
+  href: string;
+  generatedAt?: string;
+  companyName?: string;
 }
 
 const REPORT_TYPES: ReportTypeConfig[] = [
@@ -116,6 +124,49 @@ export function ActionPanel({ companyId }: ActionPanelProps) {
   const [isLoading, setIsLoading] = useState(true);
   const [docsLoaded, setDocsLoaded] = useState(false);
   const [showGenDialog, setShowGenDialog] = useState(false);
+  const [valuationDl, setValuationDl] = useState<ValuationDownloadState | null>(null);
+  const [valuationDlLoading, setValuationDlLoading] = useState(false);
+
+  const openValuationPrompt = useCallback(async () => {
+    if (valuationDlLoading) return;
+    setValuationDlLoading(true);
+    try {
+      const res = await apiFetch(`/companies/${companyId}/valuation/latest`);
+      const data = await res.json();
+      const xlsxUrl: string | undefined = data?.xlsx_url;
+      if (!xlsxUrl) {
+        router.push(`/companies/${companyId}/valuation`);
+        return;
+      }
+      const href = uploadUrl(xlsxUrl);
+      if (!href) {
+        router.push(`/companies/${companyId}/valuation`);
+        return;
+      }
+      const filename = (data?.xlsx_filename as string) || xlsxUrl.split('/').pop() || 'valuation.xlsx';
+      setValuationDl({
+        filename,
+        href,
+        generatedAt: data?.generated_at,
+        companyName: data?.summary?.engagement?.company_name,
+      });
+    } catch {
+      router.push(`/companies/${companyId}/valuation`);
+    } finally {
+      setValuationDlLoading(false);
+    }
+  }, [companyId, router, valuationDlLoading]);
+
+  const triggerValuationDownload = useCallback(() => {
+    if (!valuationDl) return;
+    const a = document.createElement('a');
+    a.href = valuationDl.href;
+    a.download = valuationDl.filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setValuationDl(null);
+  }, [valuationDl]);
   const [generating, setGenerating] = useState(false);
   const [companyTier, setCompanyTier] = useState('standard');
   const [companyWebsite, setCompanyWebsite] = useState<string | null>(null);
@@ -297,6 +348,10 @@ export function ActionPanel({ companyId }: ActionPanelProps) {
                             <button
                               onClick={() => {
                                 if (isDisabled) return;
+                                if (type.id === 'valuation_report') {
+                                  openValuationPrompt();
+                                  return;
+                                }
                                 if (type.customRoute) {
                                   router.push(`/companies/${companyId}${type.customRoute}`);
                                   return;
@@ -515,6 +570,11 @@ export function ActionPanel({ companyId }: ActionPanelProps) {
               const isDisabled = !!opt.disabled;
               const handleClick = () => {
                 if (isDisabled) return;
+                if (opt.id === 'valuation_report') {
+                  setShowGenDialog(false);
+                  openValuationPrompt();
+                  return;
+                }
                 if (opt.customRoute) {
                   setShowGenDialog(false);
                   router.push(`/companies/${companyId}${opt.customRoute}`);
@@ -564,6 +624,65 @@ export function ActionPanel({ companyId }: ActionPanelProps) {
             </span>
             <span className="text-[10px] text-muted-foreground">Change in Settings</span>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* ─── Valuation download confirmation ─── */}
+      <Dialog open={!!valuationDl} onOpenChange={(open) => !open && setValuationDl(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <BarChart3 className="h-5 w-5 text-purple-400" />
+              Download valuation workpaper
+            </DialogTitle>
+            <DialogDescription>
+              {valuationDl?.companyName
+                ? <>The latest workpaper for <span className="font-medium text-foreground">{valuationDl.companyName}</span> is ready.</>
+                : <>The latest workpaper is ready.</>}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="rounded-lg border bg-muted/40 px-3 py-2.5 flex items-center gap-3">
+            <FolderOpen className="h-4 w-4 text-muted-foreground shrink-0" />
+            <div className="min-w-0 flex-1">
+              <p className="text-[13px] font-mono truncate">{valuationDl?.filename}</p>
+              {valuationDl?.generatedAt && (
+                <p className="text-[11px] text-muted-foreground tabular-nums">
+                  Generated {new Date(valuationDl.generatedAt).toLocaleString()}
+                </p>
+              )}
+            </div>
+          </div>
+
+          <DialogFooter className="sm:justify-between gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                setValuationDl(null);
+                router.push(`/companies/${companyId}/valuation`);
+              }}
+              className="inline-flex h-9 items-center gap-2 rounded-md border bg-card px-3 text-sm font-medium transition-colors cursor-pointer hover:bg-muted"
+            >
+              Open dashboard
+            </button>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setValuationDl(null)}
+                className="inline-flex h-9 items-center rounded-md border bg-card px-3 text-sm font-medium transition-colors cursor-pointer hover:bg-muted"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={triggerValuationDownload}
+                className="inline-flex h-9 items-center gap-2 rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground shadow-[0_2px_8px_-2px_oklch(from_var(--primary)_l_c_h_/_0.45),inset_0_1px_0_oklch(1_0_0/0.18)] transition-all duration-150 cursor-pointer hover:brightness-110 active:translate-y-px"
+              >
+                <Download className="h-3.5 w-3.5" strokeWidth={2.25} />
+                Download xlsx
+              </button>
+            </div>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>
