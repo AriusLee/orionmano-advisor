@@ -424,7 +424,7 @@ export function ValuationDashboard({
                     labelStyle={TT_LABEL}
                     itemStyle={TT_ITEM}
                     cursor={{ stroke: 'oklch(0.40 0.01 260)', strokeDasharray: '3 3' }}
-                    formatter={(v: number) => formatCurrency(v, unit, currency)}
+                    formatter={(v) => formatCurrency(Number(v), unit, currency)}
                   />
                   <Line type="monotone" dataKey="Revenue" stroke={COLORS[1]} strokeWidth={2} dot={{ r: 3, fill: COLORS[1] }} activeDot={{ r: 5 }} />
                   <Line type="monotone" dataKey="EBITDA" stroke={COLORS[2]} strokeWidth={2} dot={{ r: 3, fill: COLORS[2] }} activeDot={{ r: 5 }} />
@@ -474,7 +474,7 @@ export function ValuationDashboard({
                     labelStyle={TT_LABEL}
                     itemStyle={TT_ITEM}
                     cursor={{ fill: 'oklch(0.40 0.01 260 / 0.15)' }}
-                    formatter={(v: number) => formatPct(v, 2)}
+                    formatter={(v) => formatPct(Number(v), 2)}
                   />
                   <Bar dataKey="value" fill={`url(#${gradPrefix}-wacc)`} radius={[0, 0, 0, 0]} />
                 </BarChart>
