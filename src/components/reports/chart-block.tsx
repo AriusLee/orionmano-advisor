@@ -64,6 +64,15 @@ function inferSeries(spec: ChartSpec): string[] {
   return Object.keys(first).filter((k) => k !== 'x' && typeof first[k] === 'number');
 }
 
+/** Collapse multi-source chart attributions to Orionmano when present.
+ *  Policy: paid/external sources sit behind Orionmano-imprinted articles
+ *  and shouldn't co-attribute on chart source notes. */
+function normalizeSourceNote(raw: unknown): string {
+  const s = cleanLabel(raw);
+  if (!s) return s;
+  return /orionmano/i.test(s) ? 'Source: Orionmano Industries' : s;
+}
+
 /** Strip markdown bold, <br>, footnote markers from a chart label/title. */
 function cleanLabel(raw: unknown): string {
   if (raw === null || raw === undefined) return '';
@@ -99,7 +108,7 @@ function cleanSpec(spec: ChartSpec): ChartSpec {
       return out;
     }),
     annotations: spec.annotations?.map(cleanLabel),
-    source_note: spec.source_note ? cleanLabel(spec.source_note) : spec.source_note,
+    source_note: spec.source_note ? normalizeSourceNote(spec.source_note) : spec.source_note,
   };
 }
 
