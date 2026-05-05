@@ -15,7 +15,14 @@ import {
   Sparkles,
   CheckCircle2,
   FileText,
+  ChevronDown,
 } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+} from "@/components/ui/dropdown-menu";
 import { toast } from "sonner";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -205,12 +212,13 @@ export default function ReportDetailPage({
     else window.scrollTo({ top: 0, behavior: "smooth" });
   }, [activeSection]);
 
-  const handleExportPdf = async () => {
+  const handleExportPdf = async (lang: "en" | "zh-CN" | "ja" = "en") => {
     setExporting(true);
     try {
       const token = localStorage.getItem("token");
+      const qs = lang === "en" ? "" : `?lang=${encodeURIComponent(lang)}`;
       const res = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL}/companies/${id}/reports/${reportId}/pdf`,
+        `${process.env.NEXT_PUBLIC_API_URL}/companies/${id}/reports/${reportId}/pdf${qs}`,
         { headers: { Authorization: `Bearer ${token}` } }
       );
       if (!res.ok) throw new Error("Export failed");
@@ -218,7 +226,8 @@ export default function ReportDetailPage({
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `${report?.title || "report"}.pdf`;
+      const suffix = lang === "en" ? "" : `-${lang}`;
+      a.download = `${report?.title || "report"}${suffix}.pdf`;
       a.click();
       URL.revokeObjectURL(url);
     } catch {
@@ -323,15 +332,28 @@ export default function ReportDetailPage({
             </p>
           </div>
         </div>
-        <Button
-          variant="outline"
-          className="cursor-pointer gap-2"
-          onClick={handleExportPdf}
-          disabled={exporting}
-        >
-          {exporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
-          Export PDF
-        </Button>
+        <DropdownMenu>
+          <DropdownMenuTrigger
+            render={
+              <Button variant="outline" className="cursor-pointer gap-2" disabled={exporting} />
+            }
+          >
+            {exporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+            Export PDF
+            <ChevronDown className="h-3.5 w-3.5 opacity-60" />
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem className="cursor-pointer" onClick={() => handleExportPdf("en")}>
+              English
+            </DropdownMenuItem>
+            <DropdownMenuItem className="cursor-pointer" onClick={() => handleExportPdf("zh-CN")}>
+              简体中文
+            </DropdownMenuItem>
+            <DropdownMenuItem className="cursor-pointer" onClick={() => handleExportPdf("ja")}>
+              日本語
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
 
       {/* ── Body ── */}
