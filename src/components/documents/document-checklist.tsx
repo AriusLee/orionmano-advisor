@@ -20,6 +20,7 @@ import {
   Gavel,
   ClipboardList,
   MessageSquare,
+  LineChart,
   File as FileIcon,
   type LucideIcon,
 } from 'lucide-react';
@@ -55,6 +56,7 @@ export interface ChecklistCategory {
 // All categories are recommended — the user curates what's needed per engagement.
 export const CATEGORIES: ChecklistCategory[] = [
   { id: 'audit_report',          label: 'Audit Report',           hint: 'Audited financial statements', icon: FileBarChart },
+  { id: 'financial_statements',  label: 'Financial Statements',   hint: 'Historical P&L / BS / CF extracts for modeling', icon: LineChart },
   { id: 'cap_table',             label: 'Cap Table',              hint: 'Shareholder register',         icon: Users },
   { id: 'org_chart',             label: 'Org Chart',              hint: 'Group / corporate structure',  icon: Building2 },
   { id: 'shareholder_agreement', label: 'Shareholder Agreement',  hint: 'SHA, investment docs',         icon: Briefcase },
