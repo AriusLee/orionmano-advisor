@@ -27,6 +27,7 @@ import { toast } from "sonner";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { ChartBlock, parseChartSpec } from "@/components/reports/chart-block";
+import { LintFindingsPanel, type LintFinding } from "@/components/reports/lint-findings-panel";
 import { cn } from "@/lib/utils";
 
 interface ReportSection {
@@ -45,6 +46,7 @@ interface Report {
   status: string;
   tier?: string;
   sections: ReportSection[];
+  lint_findings?: LintFinding[] | null;
 }
 
 const STATUS_META: Record<string, { label: string; dot: string; text: string; ring: string }> = {
@@ -355,6 +357,9 @@ export default function ReportDetailPage({
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
+
+      {/* ── Editorial review (cross-section lint findings) ── */}
+      <LintFindingsPanel findings={report.lint_findings} />
 
       {/* ── Body ── */}
       <div className="flex gap-6">
