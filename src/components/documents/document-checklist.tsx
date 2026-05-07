@@ -28,6 +28,7 @@ import { apiFetch, apiJson } from '@/lib/api';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { Sparkles } from 'lucide-react';
+import { DocumentViewerModal } from './document-viewer-modal';
 
 interface Doc {
   id: string;
@@ -35,6 +36,8 @@ interface Doc {
   extraction_status: string;
   category?: string | null;
   categories?: string[] | null;
+  mime_type?: string | null;
+  extracted_data?: Record<string, unknown> | null;
 }
 
 interface DocumentChecklistProps {
@@ -78,6 +81,7 @@ export function DocumentChecklist({ companyId, documents, onChanged, companyWebs
   const [uploading, setUploading] = useState(0);
   const [dragOver, setDragOver] = useState(false);
   const [reclassifying, setReclassifying] = useState(false);
+  const [viewerDoc, setViewerDoc] = useState<Doc | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const handleReclassify = async () => {
@@ -272,6 +276,7 @@ export function DocumentChecklist({ companyId, documents, onChanged, companyWebs
             websiteSatisfied={cat.id === 'company_profile' && hasWebsiteProfile}
             companyWebsite={companyWebsite}
             onDelete={handleDelete}
+            onView={setViewerDoc}
           />
         ))}
       </ul>
@@ -312,9 +317,14 @@ export function DocumentChecklist({ companyId, documents, onChanged, companyWebs
               return (
                 <li key={doc.id} className="group flex items-center gap-2 rounded-md px-1.5 py-1.5 text-[11px] hover:bg-foreground/[0.03]">
                   <FileIcon className={cn('h-3 w-3 shrink-0', isFailed ? 'text-red-400/70' : 'text-muted-foreground/60')} />
-                  <span className="truncate flex-1" title={doc.filename}>
+                  <button
+                    type="button"
+                    onClick={() => setViewerDoc(doc)}
+                    className="truncate flex-1 text-left cursor-pointer hover:underline"
+                    title={doc.filename}
+                  >
                     {doc.filename}
-                  </span>
+                  </button>
                   {isFailed && (
                     <span className="shrink-0 rounded-full bg-red-500/10 px-1.5 py-px text-[9px] font-medium uppercase tracking-wider text-red-400 ring-1 ring-inset ring-red-500/25">
                       Failed
@@ -333,6 +343,12 @@ export function DocumentChecklist({ companyId, documents, onChanged, companyWebs
           </ul>
         </div>
       )}
+
+      <DocumentViewerModal
+        companyId={companyId}
+        doc={viewerDoc}
+        onClose={() => setViewerDoc(null)}
+      />
     </div>
   );
 }
@@ -346,9 +362,10 @@ interface CategoryRowProps {
   websiteSatisfied: boolean;
   companyWebsite?: string | null;
   onDelete: (id: string) => void;
+  onView: (doc: Doc) => void;
 }
 
-function CategoryRow({ cat, docs, websiteSatisfied, companyWebsite, onDelete }: CategoryRowProps) {
+function CategoryRow({ cat, docs, websiteSatisfied, companyWebsite, onDelete, onView }: CategoryRowProps) {
   const received = docs.length > 0 || websiteSatisfied;
   const Icon = cat.icon;
   return (
@@ -399,9 +416,14 @@ function CategoryRow({ cat, docs, websiteSatisfied, companyWebsite, onDelete }: 
           {docs.map((doc) => (
             <li key={doc.id} className="flex items-center gap-2 px-2 py-1 text-[11px]">
               <FileIcon className="h-3 w-3 shrink-0 text-muted-foreground/60 ml-3" />
-              <span className="truncate flex-1 text-foreground/75" title={doc.filename}>
+              <button
+                type="button"
+                onClick={() => onView(doc)}
+                className="truncate flex-1 text-left text-foreground/75 cursor-pointer hover:underline"
+                title={doc.filename}
+              >
                 {doc.filename}
-              </span>
+              </button>
               <button
                 onClick={(e) => {
                   e.stopPropagation();
