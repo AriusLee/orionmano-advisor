@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { AlertTriangle, ChevronDown, ChevronRight } from 'lucide-react';
+import { AlertTriangle, ChevronDown, ChevronRight, CheckCircle2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 export interface LintFinding {
@@ -31,7 +31,22 @@ function styleFor(sev: string | undefined) {
 export function LintFindingsPanel({ findings }: { findings: LintFinding[] | null | undefined }) {
   const [open, setOpen] = useState(false);
 
-  if (!findings || findings.length === 0) return null;
+  // null/undefined → lint never ran (legacy report); hide entirely.
+  if (findings == null) return null;
+
+  // Empty array → lint ran but found nothing. Show a small "all clear" chip
+  // so the analyst knows the editorial pass executed.
+  if (findings.length === 0) {
+    return (
+      <div className="mb-4 flex items-center gap-2 rounded-lg border border-emerald-500/20 bg-emerald-500/[0.04] px-3 py-2 ring-1 ring-inset ring-emerald-500/20">
+        <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-400" />
+        <p className="text-[12px] text-foreground/85">
+          <span className="font-semibold">Editorial review:</span>{' '}
+          <span className="text-muted-foreground">no cross-section contradictions found</span>
+        </p>
+      </div>
+    );
+  }
 
   // Sort by severity then kind so the worst issues surface first
   const sorted = [...findings].sort((a, b) => {
