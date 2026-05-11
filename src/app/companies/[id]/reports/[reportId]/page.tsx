@@ -359,7 +359,32 @@ export default function ReportDetailPage({
       </div>
 
       {/* ── Editorial review (cross-section lint findings) ── */}
-      <LintFindingsPanel findings={report.lint_findings} />
+      <LintFindingsPanel
+        findings={report.lint_findings}
+        onAutoFix={async (findingIndex) => {
+          try {
+            const res = await apiJson<{
+              status: 'fixed' | 'rejected';
+              lint_findings: LintFinding[];
+              updated_sections: string[];
+              message: string;
+            }>(`/companies/${id}/reports/${reportId}/lint/fix`, {
+              method: 'POST',
+              body: JSON.stringify({ finding_index: findingIndex }),
+            });
+            if (res.status === 'rejected') {
+              toast.error(`Auto-fix rejected: ${res.message}`);
+            } else {
+              toast.success(res.message);
+            }
+            // Re-fetch the report so updated section content + new lint_findings render
+            const refreshed = await apiJson<Report>(`/companies/${id}/reports/${reportId}`);
+            setReport(refreshed);
+          } catch (e) {
+            toast.error(`Auto-fix failed: ${e instanceof Error ? e.message : 'unknown'}`);
+          }
+        }}
+      />
 
       {/* ── Body ── */}
       <div className="flex gap-6">

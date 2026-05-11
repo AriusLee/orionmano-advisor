@@ -118,6 +118,8 @@ export interface ValuationSummary {
     country?: string;
     industry?: string;
     report_purpose?: string;
+    target_valuation?: number | null;
+    exchange_platform?: string | null;
   };
   currency: { primary?: string; unit?: string };
   projections: {
@@ -303,6 +305,8 @@ export function ValuationDashboard({
     summary.engagement.valuation_date && `as of ${summary.engagement.valuation_date}`,
     summary.engagement.country,
     summary.engagement.industry,
+    summary.engagement.exchange_platform && `→ ${summary.engagement.exchange_platform}`,
+    summary.engagement.target_valuation != null && `target ${formatCurrency(summary.engagement.target_valuation, unit, currency)}`,
   ].filter(Boolean).join(' · ');
 
   return (

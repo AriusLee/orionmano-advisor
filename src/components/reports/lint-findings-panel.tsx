@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { AlertTriangle, ChevronDown, ChevronRight, CheckCircle2 } from 'lucide-react';
+import { AlertTriangle, ChevronDown, ChevronRight, CheckCircle2, Loader2, Sparkles } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 export interface LintFinding {
@@ -28,8 +28,18 @@ function styleFor(sev: string | undefined) {
   return SEVERITY_STYLE[sev ?? 'low'] ?? SEVERITY_STYLE.low;
 }
 
-export function LintFindingsPanel({ findings }: { findings: LintFinding[] | null | undefined }) {
+interface LintFindingsPanelProps {
+  findings: LintFinding[] | null | undefined;
+  /** Async handler for the "Auto-fix" button. Receives the index of the finding
+   * within the panel's *original* (unsorted) array so the backend can locate
+   * it deterministically. The caller is responsible for refreshing the report
+   * once the fix completes. */
+  onAutoFix?: (findingIndex: number) => Promise<void>;
+}
+
+export function LintFindingsPanel({ findings, onAutoFix }: LintFindingsPanelProps) {
   const [open, setOpen] = useState(false);
+  const [fixingIndex, setFixingIndex] = useState<number | null>(null);
 
   // null/undefined → lint never ran (legacy report); hide entirely.
   if (findings == null) return null;
@@ -48,15 +58,19 @@ export function LintFindingsPanel({ findings }: { findings: LintFinding[] | null
     );
   }
 
-  // Sort by severity then kind so the worst issues surface first
-  const sorted = [...findings].sort((a, b) => {
-    const sa = SEVERITY_ORDER.indexOf((a.severity ?? 'low').toLowerCase());
-    const sb = SEVERITY_ORDER.indexOf((b.severity ?? 'low').toLowerCase());
-    return (sa === -1 ? 99 : sa) - (sb === -1 ? 99 : sb);
-  });
+  // Sort by severity then kind so the worst issues surface first.
+  // We keep the ORIGINAL index so the auto-fix endpoint (which uses the
+  // backend's stored array order) targets the right finding.
+  const sorted = findings
+    .map((f, originalIndex) => ({ f, originalIndex }))
+    .sort((a, b) => {
+      const sa = SEVERITY_ORDER.indexOf((a.f.severity ?? 'low').toLowerCase());
+      const sb = SEVERITY_ORDER.indexOf((b.f.severity ?? 'low').toLowerCase());
+      return (sa === -1 ? 99 : sa) - (sb === -1 ? 99 : sb);
+    });
 
   // Count by severity for the header chip
-  const counts = sorted.reduce<Record<string, number>>((acc, f) => {
+  const counts = sorted.reduce<Record<string, number>>((acc, { f }) => {
     const k = (f.severity ?? 'low').toLowerCase();
     acc[k] = (acc[k] ?? 0) + 1;
     return acc;
@@ -98,11 +112,21 @@ export function LintFindingsPanel({ findings }: { findings: LintFinding[] | null
 
       {open && (
         <ul className="space-y-2 border-t border-border/40 px-3 py-3">
-          {sorted.map((f, i) => {
+          {sorted.map(({ f, originalIndex }) => {
             const s = styleFor(f.severity);
+            const isFixing = fixingIndex === originalIndex;
+            const handleFix = async () => {
+              if (!onAutoFix || isFixing) return;
+              setFixingIndex(originalIndex);
+              try {
+                await onAutoFix(originalIndex);
+              } finally {
+                setFixingIndex(null);
+              }
+            };
             return (
               <li
-                key={i}
+                key={originalIndex}
                 className="rounded-md border border-border/40 bg-background/80 p-2.5 text-[12px]"
               >
                 <div className="mb-1.5 flex items-center gap-2">
@@ -117,6 +141,26 @@ export function LintFindingsPanel({ findings }: { findings: LintFinding[] | null
                   </span>
                   {f.kind && (
                     <span className="text-[10px] text-muted-foreground/80">{f.kind}</span>
+                  )}
+                  {onAutoFix && (
+                    <button
+                      type="button"
+                      onClick={handleFix}
+                      disabled={isFixing || fixingIndex !== null}
+                      className={cn(
+                        'ml-auto inline-flex items-center gap-1 rounded-md border border-primary/25 bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary transition-colors',
+                        isFixing || fixingIndex !== null
+                          ? 'cursor-not-allowed opacity-60'
+                          : 'cursor-pointer hover:bg-primary/15 hover:border-primary/40',
+                      )}
+                    >
+                      {isFixing ? (
+                        <Loader2 className="h-3 w-3 animate-spin" />
+                      ) : (
+                        <Sparkles className="h-3 w-3" />
+                      )}
+                      {isFixing ? 'Fixing…' : 'Auto-fix'}
+                    </button>
                   )}
                 </div>
 
