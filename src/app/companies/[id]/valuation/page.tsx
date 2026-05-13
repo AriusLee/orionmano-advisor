@@ -10,6 +10,7 @@ import {
   Download,
   FileJson,
   FileSpreadsheet,
+  FileText,
   Lightbulb,
   Loader2,
   Save,
@@ -49,6 +50,7 @@ interface WorkpaperResult {
   errors: string[];
   generatedAt: string;
   summary?: ValuationSummary | null;
+  report_id?: string | null;
 }
 
 interface LatestSummary {
@@ -59,6 +61,7 @@ interface LatestSummary {
   errors: string[];
   summary: ValuationSummary;
   inputs?: Record<string, unknown>;
+  report_id?: string | null;
 }
 
 const REQUIRED_DOCS = ['audit_report', 'projections'];
@@ -85,6 +88,9 @@ export default function ValuationPage({ params }: { params: Promise<{ id: string
   const [targetValuation, setTargetValuation] = useState<string>('');
   const [savedTargetValuation, setSavedTargetValuation] = useState<number | null>(null);
   const [savingTarget, setSavingTarget] = useState(false);
+  // Eric 2026-05-08 item 6 — per-run valuation date. Defaults to today; the
+  // prefill effect overwrites it with the most recent run's date if present.
+  const [valuationDate, setValuationDate] = useState<string>(() => new Date().toISOString().slice(0, 10));
   const autoRegenFiredRef = useRef(false);
 
   // Prefill the run-config input. Precedence: Company.target_valuation (saved
@@ -102,6 +108,19 @@ export default function ValuationPage({ params }: { params: Promise<{ id: string
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [savedTargetValuation, latest]);
+
+  // Once we know the most recent run's valuation date, surface it as the
+  // default so a 'Regenerate' click reuses the same as-of date. The user can
+  // still override before clicking.
+  const valuationDateInitializedRef = useRef(false);
+  useEffect(() => {
+    if (valuationDateInitializedRef.current) return;
+    const prior = latest?.summary?.engagement?.valuation_date;
+    if (prior && /^\d{4}-\d{2}-\d{2}/.test(prior)) {
+      setValuationDate(prior.slice(0, 10));
+      valuationDateInitializedRef.current = true;
+    }
+  }, [latest]);
 
   const reuploadInputRef = useRef<HTMLInputElement>(null);
 
@@ -152,6 +171,7 @@ export default function ValuationPage({ params }: { params: Promise<{ id: string
         errors: string[];
         summary?: ValuationSummary | null;
         parsed_inputs?: Record<string, unknown>;
+        report_id?: string | null;
       };
       let res: RegenerateResponse;
       let parsedForLatest: Record<string, unknown> | undefined;
@@ -192,6 +212,7 @@ export default function ValuationPage({ params }: { params: Promise<{ id: string
         errors: res.errors ?? [],
         generatedAt,
         summary: res.summary ?? null,
+        report_id: res.report_id ?? null,
       });
       if (res.summary && res.xlsx_url) {
         setLatest({
@@ -202,6 +223,7 @@ export default function ValuationPage({ params }: { params: Promise<{ id: string
           errors: res.errors ?? [],
           summary: res.summary,
           inputs: parsedForLatest,
+          report_id: res.report_id ?? null,
         });
       }
       if (status === 'success') {
@@ -295,6 +317,7 @@ export default function ValuationPage({ params }: { params: Promise<{ id: string
         warnings: string[];
         errors: string[];
         summary?: ValuationSummary | null;
+        report_id?: string | null;
       }>(`/companies/${id}/valuation/generate-workpaper`, {
         method: 'POST',
         body: JSON.stringify({
@@ -304,6 +327,7 @@ export default function ValuationPage({ params }: { params: Promise<{ id: string
           target_valuation: targetValuation.trim()
             ? Number(targetValuation)
             : savedTargetValuation ?? latest?.summary?.engagement?.target_valuation ?? null,
+          valuation_date: valuationDate.trim() || null,
         }),
       });
 
@@ -320,6 +344,7 @@ export default function ValuationPage({ params }: { params: Promise<{ id: string
         errors: res.errors ?? [],
         generatedAt,
         summary: res.summary ?? null,
+        report_id: res.report_id ?? null,
       });
       if (res.summary && res.xlsx_url) {
         setLatest({
@@ -329,11 +354,16 @@ export default function ValuationPage({ params }: { params: Promise<{ id: string
           warnings: res.warnings ?? [],
           errors: res.errors ?? [],
           summary: res.summary,
+          report_id: res.report_id ?? null,
         });
       }
 
       if (status === 'success') {
-        toast.success('Workpaper generated');
+        toast.success(
+          res.report_id
+            ? 'Workpaper generated · written report kicked off'
+            : 'Workpaper generated'
+        );
       } else if (status === 'partial') {
         toast.warning(`Generated with ${(res.errors ?? []).length} validation errors`);
       }
@@ -378,6 +408,8 @@ export default function ValuationPage({ params }: { params: Promise<{ id: string
       <RunConfigCard
         targetValuation={targetValuation}
         onChange={setTargetValuation}
+        valuationDate={valuationDate}
+        onValuationDateChange={setValuationDate}
         currencyLabel={
           latest?.summary?.currency
             ? `${latest.summary.currency.primary ?? 'USD'} ${latest.summary.currency.unit ?? ''}`.trim()
@@ -405,6 +437,8 @@ export default function ValuationPage({ params }: { params: Promise<{ id: string
             filename={latest.xlsx_filename}
             generatedAt={latest.generated_at}
             errorCount={latest.errors?.length ?? 0}
+            companyId={id}
+            reportId={latest.report_id ?? null}
             onRegenerate={handleGenerate}
             onDownloadInputs={handleDownloadInputs}
             onReupload={handleReuploadClick}
@@ -449,21 +483,17 @@ export default function ValuationPage({ params }: { params: Promise<{ id: string
   );
 }
 
-function formatTargetPreview(raw: string, currency: string, unit: string): string | null {
+function formatTargetPreview(raw: string, currency: string): string | null {
+  // target_valuation is stored in ACTUAL currency units — the typed number IS
+  // the literal dollar amount, no '000 multiplier. The preview just abbreviates
+  // it for readability (400000000 → "= USD 400M").
   const n = Number(raw);
   if (!raw.trim() || !Number.isFinite(n) || n <= 0) return null;
-  // Unit multiplier: '000 = thousand, '000000 / "mm" = million; default = 1.
-  const u = unit.trim().toLowerCase();
-  const mult =
-    u === "'000" || u === '000' ? 1_000 :
-    u === "'000000" || u === 'mm' || u === "'mm" ? 1_000_000 :
-    1;
-  const actual = n * mult;
   let display: string;
-  if (actual >= 1_000_000_000) display = `${(actual / 1_000_000_000).toFixed(actual >= 10_000_000_000 ? 0 : 2)}B`;
-  else if (actual >= 1_000_000) display = `${(actual / 1_000_000).toFixed(actual >= 10_000_000 ? 0 : 1)}M`;
-  else if (actual >= 1_000) display = `${(actual / 1_000).toFixed(0)}K`;
-  else display = String(actual);
+  if (n >= 1_000_000_000) display = `${(n / 1_000_000_000).toFixed(n >= 10_000_000_000 ? 0 : 2)}B`;
+  else if (n >= 1_000_000) display = `${(n / 1_000_000).toFixed(n >= 10_000_000 ? 0 : 1)}M`;
+  else if (n >= 1_000) display = `${(n / 1_000).toFixed(0)}K`;
+  else display = String(n);
   return `= ${currency} ${display}`;
 }
 
@@ -480,10 +510,13 @@ interface HeadlineAssumption {
   path: string[];
   format: 'currency' | 'percent' | 'number';
   digits?: number;
+  // When true, the value is already in ACTUAL currency units — skip the
+  // unit-multiplier conversion that the rest of the workpaper uses.
+  noUnitScale?: boolean;
 }
 
 const HEADLINE_ASSUMPTIONS: HeadlineAssumption[] = [
-  { sourceId: 'target_valuation', label: 'Target valuation', path: ['engagement', 'target_valuation'], format: 'currency' },
+  { sourceId: 'target_valuation', label: 'Target valuation', path: ['engagement', 'target_valuation'], format: 'currency', noUnitScale: true },
   { sourceId: 'revenue_y0', label: 'Revenue Y0 (cascade base)', path: ['projections', 'revenue_y0'], format: 'currency' },
   { sourceId: 'revenue_growth_y1', label: 'Revenue growth — Y1', path: ['projections', 'revenue_growth', '0'], format: 'percent' },
   { sourceId: 'gross_margin_y1', label: 'Gross margin — Y1', path: ['projections', 'gross_margin', '0'], format: 'percent' },
@@ -511,7 +544,7 @@ function readPath(obj: Record<string, unknown> | undefined, path: string[]): unk
   return cur;
 }
 
-function formatAssumption(raw: unknown, fmt: HeadlineAssumption['format'], digits: number | undefined, currency: string, unit: string): string {
+function formatAssumption(raw: unknown, fmt: HeadlineAssumption['format'], digits: number | undefined, currency: string, unit: string, noUnitScale?: boolean): string {
   if (raw == null) return '—';
   const n = Number(raw);
   if (!Number.isFinite(n)) return '—';
@@ -521,13 +554,20 @@ function formatAssumption(raw: unknown, fmt: HeadlineAssumption['format'], digit
   if (fmt === 'number') {
     return n.toFixed(digits ?? 2);
   }
-  // currency: apply unit multiplier so we display human-readable scale
-  const u = unit.trim().toLowerCase();
-  const mult =
-    u === "'000" || u === '000' ? 1_000 :
-    u === "'000000" || u === 'mm' || u === "'mm" ? 1_000_000 :
-    1;
-  const actual = n * mult;
+  // currency: apply unit multiplier so we display human-readable scale —
+  // EXCEPT for fields flagged noUnitScale (target_valuation), which are
+  // already in actual currency units.
+  let actual: number;
+  if (noUnitScale) {
+    actual = n;
+  } else {
+    const u = unit.trim().toLowerCase();
+    const mult =
+      u === "'000" || u === '000' ? 1_000 :
+      u === "'000000" || u === 'mm' || u === "'mm" ? 1_000_000 :
+      1;
+    actual = n * mult;
+  }
   let body: string;
   if (actual >= 1_000_000_000) body = `${(actual / 1_000_000_000).toFixed(actual >= 10_000_000_000 ? 0 : 2)}B`;
   else if (actual >= 1_000_000) body = `${(actual / 1_000_000).toFixed(actual >= 10_000_000 ? 0 : 1)}M`;
@@ -576,7 +616,7 @@ function AssumptionsPanel({
             <div className="w-48 shrink-0">
               <p className="text-xs font-medium tracking-tight">{r.label}</p>
               <p className="mt-0.5 text-sm font-semibold tabular-nums text-foreground">
-                {formatAssumption(r.value, r.format, r.digits, currency, unit)}
+                {formatAssumption(r.value, r.format, r.digits, currency, unit, r.noUnitScale)}
               </p>
               {r.src?.source && (
                 <p className="mt-1 text-[10px] uppercase tracking-wider text-muted-foreground/70">{r.src.source}</p>
@@ -608,6 +648,8 @@ function AssumptionsPanel({
 function RunConfigCard({
   targetValuation,
   onChange,
+  valuationDate,
+  onValuationDateChange,
   currencyLabel,
   savedValue,
   onSave,
@@ -615,49 +657,53 @@ function RunConfigCard({
 }: {
   targetValuation: string;
   onChange: (v: string) => void;
+  valuationDate: string;
+  onValuationDateChange: (v: string) => void;
   currencyLabel: string;
   savedValue: number | null;
   onSave: () => void;
   saving: boolean;
 }) {
-  // Split "USD '000" → ("USD", "'000") so we can compute the real-money preview.
-  const [currencyCode, unit] = (() => {
-    const m = currencyLabel.match(/^(\S+)\s*(.*)$/);
-    return m ? [m[1], m[2]] : [currencyLabel, ''];
-  })();
-  const preview = formatTargetPreview(targetValuation, currencyCode, unit);
+  // currencyLabel may arrive as "USD '000" — strip the unit suffix for the
+  // target_valuation display because the input is ACTUAL currency, not
+  // unit-scaled. The runtime stored value matches the typed number 1:1.
+  const currencyCode = (currencyLabel.match(/^(\S+)/)?.[1]) || currencyLabel;
+  const preview = formatTargetPreview(targetValuation, currencyCode);
   const trimmed = targetValuation.trim();
   const currentNumeric = trimmed ? Number(trimmed) : null;
   const isDirty =
     (currentNumeric === null && savedValue !== null) ||
     (currentNumeric !== null && currentNumeric !== savedValue);
   return (
-    <div className="rounded-2xl border bg-card p-4 flex items-center gap-4">
-      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 ring-1 ring-primary/20">
+    <div className="rounded-2xl border bg-card p-4 flex items-start gap-4">
+      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 ring-1 ring-primary/20 mt-0.5">
         <Target className="h-4 w-4 text-primary" strokeWidth={2.25} />
       </div>
-      <div className="flex-1 min-w-0">
-        <Label htmlFor="target-valuation" className="text-xs font-semibold tracking-tight">
-          Target valuation
-        </Label>
-        <p className="text-[11px] text-muted-foreground/80">
-          Client&apos;s target valuation. Save to persist on the company record (used as the default on every run); or just type and Generate to use it for this run only.
-        </p>
-      </div>
-      <div className="flex shrink-0 flex-col items-end gap-1">
-        <div className="flex items-center gap-2">
+      <div className="flex-1 min-w-0 space-y-3">
+        <div>
+          <h2 className="text-sm font-semibold tracking-tight">Run configuration</h2>
+          <p className="text-[11px] text-muted-foreground/80">
+            Per-run knobs the producer treats as authoritative. Target saves to the company record; date is per-run.
+          </p>
+        </div>
+
+        {/* Row 1 — Target valuation */}
+        <div className="flex items-center gap-3 flex-wrap">
+          <Label htmlFor="target-valuation" className="text-xs font-medium w-32 shrink-0">
+            Target valuation
+          </Label>
           <Input
             id="target-valuation"
             type="number"
             inputMode="decimal"
             min={0}
             step="any"
-            placeholder="e.g. 500000"
+            placeholder="e.g. 500000000"
             value={targetValuation}
             onChange={(e) => onChange(e.target.value)}
-            className="h-9 w-44 text-sm tabular-nums"
+            className="h-9 w-52 text-sm tabular-nums"
           />
-          <span className="text-[11px] text-muted-foreground/80 font-mono whitespace-nowrap">{currencyLabel}</span>
+          <span className="text-[11px] text-muted-foreground/80 font-mono whitespace-nowrap">{currencyCode}</span>
           <button
             type="button"
             onClick={onSave}
@@ -686,10 +732,27 @@ function RunConfigCard({
               </>
             )}
           </button>
+          {preview && (
+            <span className="text-[11px] font-medium text-primary tabular-nums whitespace-nowrap">{preview}</span>
+          )}
         </div>
-        {preview && (
-          <span className="text-[11px] font-medium text-primary tabular-nums whitespace-nowrap">{preview}</span>
-        )}
+
+        {/* Row 2 — Valuation date (Eric item 6) */}
+        <div className="flex items-center gap-3 flex-wrap">
+          <Label htmlFor="valuation-date" className="text-xs font-medium w-32 shrink-0">
+            Valuation date
+          </Label>
+          <Input
+            id="valuation-date"
+            type="date"
+            value={valuationDate}
+            onChange={(e) => onValuationDateChange(e.target.value)}
+            className="h-9 w-44 text-sm tabular-nums"
+          />
+          <span className="text-[11px] text-muted-foreground/80 whitespace-nowrap">
+            Anchors forecasts, risk-free rate, comp multiples
+          </span>
+        </div>
       </div>
     </div>
   );
@@ -701,6 +764,8 @@ function WorkpaperHeaderCard({
   filename,
   generatedAt,
   errorCount,
+  companyId,
+  reportId,
   onRegenerate,
   onDownloadInputs,
   onReupload,
@@ -710,6 +775,8 @@ function WorkpaperHeaderCard({
   filename: string;
   generatedAt: string;
   errorCount: number;
+  companyId: string;
+  reportId: string | null;
   onRegenerate: () => void;
   onDownloadInputs: () => void;
   onReupload: () => void;
@@ -735,6 +802,16 @@ function WorkpaperHeaderCard({
         </p>
       </div>
       <div className="flex shrink-0 items-center gap-2 flex-wrap">
+        {reportId && (
+          <a
+            href={`/companies/${companyId}/reports/${reportId}`}
+            title="View the written valuation report that explains every assumption in this workpaper"
+            className="inline-flex h-9 items-center gap-2 rounded-lg border bg-card px-3 text-sm font-medium transition-all duration-150 cursor-pointer hover:bg-muted active:translate-y-px"
+          >
+            <FileText className="h-3.5 w-3.5" strokeWidth={2.25} />
+            View Report
+          </a>
+        )}
         <button
           onClick={onDownloadInputs}
           disabled={!hasInputs}

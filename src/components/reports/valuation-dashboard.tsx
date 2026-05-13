@@ -306,7 +306,7 @@ export function ValuationDashboard({
     summary.engagement.country,
     summary.engagement.industry,
     summary.engagement.exchange_platform && `→ ${summary.engagement.exchange_platform}`,
-    summary.engagement.target_valuation != null && `target ${formatCurrency(summary.engagement.target_valuation, unit, currency)}`,
+    summary.engagement.target_valuation != null && `target ${formatCurrency(summary.engagement.target_valuation, undefined, currency)}`,
   ].filter(Boolean).join(' · ');
 
   return (
