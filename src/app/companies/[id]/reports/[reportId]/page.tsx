@@ -16,6 +16,8 @@ import {
   CheckCircle2,
   FileText,
   ChevronDown,
+  AlertTriangle,
+  RefreshCw,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -39,6 +41,24 @@ interface ReportSection {
   is_ai_generated: boolean;
 }
 
+interface BrokenCitation {
+  id: string;
+  slug: string;
+  title: string;
+  status: string;
+  error: string | null;
+}
+
+interface CitationHealth {
+  total: number;
+  published: number;
+  broken_count: number;
+  broken: BrokenCitation[];
+  all_ok: boolean;
+  article_ids: string[];
+  checked_at: string;
+}
+
 interface Report {
   id: string;
   title: string;
@@ -47,6 +67,7 @@ interface Report {
   tier?: string;
   sections: ReportSection[];
   lint_findings?: LintFinding[] | null;
+  citation_health?: CitationHealth | null;
 }
 
 const STATUS_META: Record<string, { label: string; dot: string; text: string; ring: string }> = {
@@ -358,6 +379,29 @@ export default function ReportDetailPage({
         </DropdownMenu>
       </div>
 
+      {/* ── Citation-link health (ping-before-deliver gate) ── */}
+      {report.report_type === "industry_report" && (
+        <CitationHealthPanel
+          health={report.citation_health}
+          onRevalidate={async () => {
+            try {
+              await apiJson(`/companies/${id}/reports/${reportId}/validate-citations`, { method: 'POST' });
+              toast.success('Re-validation queued. Refresh in a moment.');
+            } catch (e) {
+              toast.error(`Re-validate failed: ${e instanceof Error ? e.message : 'unknown'}`);
+            }
+          }}
+          onRegenerateArticle={async (articleId) => {
+            try {
+              await apiJson(`/articles/${articleId}/regenerate`, { method: 'POST' });
+              toast.success('Article regeneration queued. Re-validate once it completes.');
+            } catch (e) {
+              toast.error(`Regenerate failed: ${e instanceof Error ? e.message : 'unknown'}`);
+            }
+          }}
+        />
+      )}
+
       {/* ── Editorial review (cross-section lint findings) ── */}
       <LintFindingsPanel
         findings={report.lint_findings}
@@ -564,5 +608,116 @@ export default function ReportDetailPage({
         </section>
       </div>
     </div>
+  );
+}
+
+// ─── Citation health panel — Eric 2026-05 'ping before deliver' gate ─────────
+
+function CitationHealthPanel({
+  health,
+  onRevalidate,
+  onRegenerateArticle,
+}: {
+  health: CitationHealth | null | undefined;
+  onRevalidate: () => void;
+  onRegenerateArticle: (articleId: string) => void;
+}) {
+  if (!health) {
+    // No snapshot yet — heal pass hasn't completed. Show a neutral pending state.
+    return (
+      <div className="rounded-2xl border bg-card p-4 flex items-center gap-3">
+        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-muted ring-1 ring-border">
+          <Loader2 className="h-4 w-4 text-muted-foreground animate-spin" strokeWidth={2.25} />
+        </div>
+        <div className="flex-1 min-w-0">
+          <h2 className="text-sm font-semibold tracking-tight">Citation links — checking…</h2>
+          <p className="text-[11px] text-muted-foreground/80">
+            Article body generation is running. Refresh this page in a minute to see the citation-health snapshot.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  const allOk = health.all_ok;
+  const tone = allOk ? "emerald" : "amber";
+  return (
+    <details
+      className={cn(
+        "group rounded-2xl border bg-card",
+        allOk ? "border-emerald-500/30" : "border-amber-500/30",
+      )}
+      open={!allOk}
+    >
+      <summary className="flex cursor-pointer items-center gap-3 p-4 list-none">
+        <div
+          className={cn(
+            "flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ring-1",
+            tone === "emerald"
+              ? "bg-emerald-500/10 ring-emerald-500/30"
+              : "bg-amber-500/10 ring-amber-500/30",
+          )}
+        >
+          {allOk ? (
+            <CheckCircle2 className="h-4 w-4 text-emerald-500" strokeWidth={2.25} />
+          ) : (
+            <AlertTriangle className="h-4 w-4 text-amber-500" strokeWidth={2.25} />
+          )}
+        </div>
+        <div className="flex-1 min-w-0">
+          <h2 className="text-sm font-semibold tracking-tight">
+            {allOk
+              ? `All ${health.total} citations resolve`
+              : `${health.broken_count} of ${health.total} citations broken`}
+          </h2>
+          <p className="text-[11px] text-muted-foreground/80">
+            {allOk
+              ? "Every footnote link will render on industries.omassurance.com. Safe to deliver."
+              : "These footnotes will 404 on industries.omassurance.com until their article body generates."}
+            {` · last checked ${new Date(health.checked_at).toLocaleString()}`}
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            onRevalidate();
+          }}
+          className="inline-flex h-8 items-center gap-1.5 rounded-md border bg-card px-2.5 text-[11px] font-medium cursor-pointer hover:bg-muted"
+        >
+          <RefreshCw className="h-3 w-3" strokeWidth={2.25} />
+          Re-check
+        </button>
+        {!allOk && (
+          <ChevronDown className="h-4 w-4 text-muted-foreground transition-transform group-open:rotate-180" strokeWidth={2.25} />
+        )}
+      </summary>
+      {!allOk && (
+        <div className="border-t divide-y">
+          {health.broken.map((c) => (
+            <div key={c.id} className="flex items-center gap-3 px-4 py-3">
+              <div className="flex-1 min-w-0">
+                <p className="text-xs font-medium tracking-tight truncate">{c.title}</p>
+                <p className="text-[11px] font-mono text-muted-foreground/80 truncate">
+                  {c.slug} · status: <span className="font-semibold">{c.status}</span>
+                </p>
+                {c.error && (
+                  <p className="mt-0.5 text-[11px] text-amber-600 truncate" title={c.error}>{c.error}</p>
+                )}
+              </div>
+              <button
+                type="button"
+                onClick={() => onRegenerateArticle(c.id)}
+                className="inline-flex h-8 items-center gap-1.5 rounded-md border bg-card px-2.5 text-[11px] font-medium cursor-pointer hover:bg-muted shrink-0"
+              >
+                <Sparkles className="h-3 w-3" strokeWidth={2.25} />
+                Regenerate article
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+    </details>
   );
 }
