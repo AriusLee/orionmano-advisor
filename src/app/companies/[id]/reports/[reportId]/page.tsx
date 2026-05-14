@@ -386,14 +386,22 @@ export default function ReportDetailPage({
           health={report.citation_health}
           onRevalidate={async () => {
             try {
-              const res = await apiJson<{ status: string; message: string }>(
-                `/companies/${id}/reports/${reportId}/validate-citations`,
-                { method: 'POST' }
-              );
+              const res = await apiJson<{
+                status: string;
+                message: string;
+                citation_health?: CitationHealth | null;
+              }>(`/companies/${id}/reports/${reportId}/validate-citations`, { method: 'POST' });
               toast.success(res.message);
-              // Quick refresh so the banner immediately reflects the queued state.
-              const refreshed = await apiJson<Report>(`/companies/${id}/reports/${reportId}`);
-              setReport(refreshed);
+              // The validate-now endpoint now writes the in-flight snapshot
+              // synchronously and returns it in the response — patch local
+              // state directly so the banner flips without waiting on a
+              // follow-up fetch (which would race the background write).
+              if (res.citation_health) {
+                setReport((r) => (r ? { ...r, citation_health: res.citation_health ?? null } : r));
+              } else {
+                const refreshed = await apiJson<Report>(`/companies/${id}/reports/${reportId}`);
+                setReport(refreshed);
+              }
             } catch (e) {
               toast.error(`Re-validate failed: ${e instanceof Error ? e.message : 'unknown'}`);
             }
