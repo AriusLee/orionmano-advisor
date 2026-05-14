@@ -57,6 +57,7 @@ interface CitationHealth {
   all_ok: boolean;
   article_ids: string[];
   checked_at: string;
+  in_flight?: boolean;
 }
 
 interface Report {
@@ -385,8 +386,14 @@ export default function ReportDetailPage({
           health={report.citation_health}
           onRevalidate={async () => {
             try {
-              await apiJson(`/companies/${id}/reports/${reportId}/validate-citations`, { method: 'POST' });
-              toast.success('Re-validation queued. Refresh in a moment.');
+              const res = await apiJson<{ status: string; message: string }>(
+                `/companies/${id}/reports/${reportId}/validate-citations`,
+                { method: 'POST' }
+              );
+              toast.success(res.message);
+              // Quick refresh so the banner immediately reflects the queued state.
+              const refreshed = await apiJson<Report>(`/companies/${id}/reports/${reportId}`);
+              setReport(refreshed);
             } catch (e) {
               toast.error(`Re-validate failed: ${e instanceof Error ? e.message : 'unknown'}`);
             }
@@ -397,6 +404,14 @@ export default function ReportDetailPage({
               toast.success('Article regeneration queued. Re-validate once it completes.');
             } catch (e) {
               toast.error(`Regenerate failed: ${e instanceof Error ? e.message : 'unknown'}`);
+            }
+          }}
+          onRefresh={async () => {
+            try {
+              const refreshed = await apiJson<Report>(`/companies/${id}/reports/${reportId}`);
+              setReport(refreshed);
+            } catch {
+              // silent — auto-poll, occasional failure is fine
             }
           }}
         />
@@ -617,23 +632,65 @@ function CitationHealthPanel({
   health,
   onRevalidate,
   onRegenerateArticle,
+  onRefresh,
 }: {
   health: CitationHealth | null | undefined;
   onRevalidate: () => void;
   onRegenerateArticle: (articleId: string) => void;
+  onRefresh: () => void;
 }) {
+  // Auto-poll while the heal pass is in flight so the progress counter ticks
+  // without the analyst hitting reload. Polls every 5s; stops as soon as
+  // in_flight clears OR the panel unmounts.
+  useEffect(() => {
+    if (!health?.in_flight) return;
+    const interval = setInterval(() => { onRefresh(); }, 5000);
+    return () => clearInterval(interval);
+  }, [health?.in_flight, health?.checked_at, onRefresh]);
+
   if (!health) {
-    // No snapshot yet — heal pass hasn't completed. Show a neutral pending state.
+    // No snapshot yet — this is the case for reports generated before the
+    // citation-health flow shipped. Offer an explicit Validate-now action.
     return (
       <div className="rounded-2xl border bg-card p-4 flex items-center gap-3">
         <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-muted ring-1 ring-border">
-          <Loader2 className="h-4 w-4 text-muted-foreground animate-spin" strokeWidth={2.25} />
+          <RefreshCw className="h-4 w-4 text-muted-foreground" strokeWidth={2.25} />
         </div>
         <div className="flex-1 min-w-0">
-          <h2 className="text-sm font-semibold tracking-tight">Citation links — checking…</h2>
+          <h2 className="text-sm font-semibold tracking-tight">Citation links — not checked yet</h2>
           <p className="text-[11px] text-muted-foreground/80">
-            Article body generation is running. Refresh this page in a minute to see the citation-health snapshot.
+            This report was generated before the citation-health gate. Run a check to verify every footnote link resolves on industries.omassurance.com before delivering.
           </p>
+        </div>
+        <button
+          type="button"
+          onClick={onRevalidate}
+          className="inline-flex h-9 items-center gap-1.5 rounded-md border bg-card px-3 text-xs font-medium cursor-pointer hover:bg-muted"
+        >
+          <RefreshCw className="h-3.5 w-3.5" strokeWidth={2.25} />
+          Validate now
+        </button>
+      </div>
+    );
+  }
+
+  // In-flight progress state — heal is running, show live counter.
+  if (health.in_flight) {
+    return (
+      <div className="rounded-2xl border border-blue-500/30 bg-card p-4 flex items-center gap-3">
+        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-blue-500/10 ring-1 ring-blue-500/30">
+          <Loader2 className="h-4 w-4 text-blue-500 animate-spin" strokeWidth={2.25} />
+        </div>
+        <div className="flex-1 min-w-0">
+          <h2 className="text-sm font-semibold tracking-tight">
+            Generating cited articles — {health.published} of {health.total} ready
+          </h2>
+          <p className="text-[11px] text-muted-foreground/80">
+            {health.broken_count} pending / failed · live progress, auto-refreshing every 5s · started {new Date(health.checked_at).toLocaleTimeString()}
+          </p>
+        </div>
+        <div className="text-[11px] tabular-nums text-muted-foreground/70 shrink-0">
+          {Math.round((health.published / Math.max(1, health.total)) * 100)}%
         </div>
       </div>
     );
