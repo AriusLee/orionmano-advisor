@@ -866,45 +866,37 @@ function WorkpaperHeaderCard({
 }) {
   const downloadHref = uploadUrl(xlsxUrl);
   return (
-    <div className="rounded-2xl border bg-card p-4 flex items-center gap-3 flex-wrap">
-      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 ring-1 ring-primary/20">
-        <FileSpreadsheet className="h-5 w-5 text-primary" />
-      </div>
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2">
-          <h2 className="text-sm font-semibold tracking-tight">Latest workpaper</h2>
-          {errorCount > 0 && (
-            <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/10 px-2 py-0.5 text-[10px] font-medium text-amber-600 ring-1 ring-amber-500/30">
-              <AlertTriangle className="h-2.5 w-2.5" /> {errorCount} validation
-            </span>
-          )}
+    <div className="rounded-2xl border bg-card p-4 space-y-3">
+      <div className="flex items-center gap-3">
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 ring-1 ring-primary/20">
+          <FileSpreadsheet className="h-5 w-5 text-primary" />
         </div>
-        <p className="font-mono text-[11px] text-muted-foreground/70 truncate">
-          {filename} · {new Date(generatedAt).toLocaleString()}
-        </p>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2">
+            <h2 className="text-sm font-semibold tracking-tight">Latest workpaper</h2>
+            {errorCount > 0 && (
+              <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/10 px-2 py-0.5 text-[10px] font-medium text-amber-600 ring-1 ring-amber-500/30">
+                <AlertTriangle className="h-2.5 w-2.5" /> {errorCount} validation
+              </span>
+            )}
+          </div>
+          <p className="font-mono text-[11px] text-muted-foreground/70 truncate">
+            {filename} · {new Date(generatedAt).toLocaleString()}
+          </p>
+        </div>
       </div>
-      <div className="flex shrink-0 items-center gap-2 flex-wrap">
-        {reportId && (
-          <a
-            href={`/companies/${companyId}/reports/${reportId}`}
-            title="View the written valuation report that explains every assumption in this workpaper"
-            className="inline-flex h-9 items-center gap-2 rounded-lg border bg-card px-3 text-sm font-medium transition-all duration-150 cursor-pointer hover:bg-muted active:translate-y-px"
-          >
-            <FileText className="h-3.5 w-3.5" strokeWidth={2.25} />
-            View Report
-          </a>
-        )}
+      <div className="grid grid-cols-2 md:grid-flow-col md:auto-cols-fr gap-2">
         <button
           onClick={onReupload}
           title="Upload an edited xlsx (or inputs JSON) to regenerate the workpaper with your manual overrides"
-          className="inline-flex h-9 items-center gap-2 rounded-lg border bg-card px-3 text-sm font-medium transition-all duration-150 cursor-pointer hover:bg-muted active:translate-y-px"
+          className="inline-flex h-9 items-center justify-center gap-2 rounded-lg border bg-card px-3 text-sm font-medium transition-all duration-150 cursor-pointer hover:bg-muted active:translate-y-px"
         >
           <Upload className="h-3.5 w-3.5" strokeWidth={2.25} />
           Re-upload
         </button>
         <button
           onClick={onRegenerate}
-          className="inline-flex h-9 items-center gap-2 rounded-lg border bg-card px-3 text-sm font-medium transition-all duration-150 cursor-pointer hover:bg-muted active:translate-y-px"
+          className="inline-flex h-9 items-center justify-center gap-2 rounded-lg border bg-card px-3 text-sm font-medium transition-all duration-150 cursor-pointer hover:bg-muted active:translate-y-px"
         >
           <Sparkles className="h-3.5 w-3.5" strokeWidth={2.25} />
           Regenerate
@@ -913,10 +905,20 @@ function WorkpaperHeaderCard({
           <a
             href={downloadHref}
             download={filename}
-            className="inline-flex h-9 items-center gap-2 rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground shadow-[0_4px_14px_-4px_oklch(from_var(--primary)_l_c_h_/_0.5),inset_0_1px_0_oklch(1_0_0/0.2)] transition-all duration-150 cursor-pointer hover:brightness-110 active:translate-y-px"
+            className="inline-flex h-9 items-center justify-center gap-2 rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground shadow-[0_4px_14px_-4px_oklch(from_var(--primary)_l_c_h_/_0.5),inset_0_1px_0_oklch(1_0_0/0.2)] transition-all duration-150 cursor-pointer hover:brightness-110 active:translate-y-px"
           >
             <Download className="h-3.5 w-3.5" strokeWidth={2.25} />
             Download xlsx
+          </a>
+        )}
+        {reportId && (
+          <a
+            href={`/companies/${companyId}/reports/${reportId}`}
+            title="View the written valuation report that explains every assumption in this workpaper"
+            className="inline-flex h-9 items-center justify-center gap-2 rounded-lg border bg-card px-3 text-sm font-medium transition-all duration-150 cursor-pointer hover:bg-muted active:translate-y-px"
+          >
+            <FileText className="h-3.5 w-3.5" strokeWidth={2.25} />
+            View Report
           </a>
         )}
       </div>

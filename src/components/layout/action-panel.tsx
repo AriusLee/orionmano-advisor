@@ -74,6 +74,7 @@ interface ValuationDownloadState {
   href: string;
   generatedAt?: string;
   companyName?: string;
+  reportId?: string | null;
 }
 
 const REPORT_TYPES: ReportTypeConfig[] = [
@@ -150,6 +151,7 @@ export function ActionPanel({ companyId }: ActionPanelProps) {
         href,
         generatedAt: data?.generated_at,
         companyName: data?.summary?.engagement?.company_name,
+        reportId: data?.report_id ?? null,
       });
     } catch {
       router.push(`/companies/${companyId}/valuation`);
@@ -659,12 +661,20 @@ export function ActionPanel({ companyId }: ActionPanelProps) {
             <button
               type="button"
               onClick={() => {
+                const rid = valuationDl?.reportId;
                 setValuationDl(null);
-                router.push(`/companies/${companyId}/valuation`);
+                if (rid) {
+                  router.push(`/companies/${companyId}/reports/${rid}`);
+                } else {
+                  // Fallback when the workpaper exists but its companion report
+                  // hasn't been created yet — drop back to the dashboard.
+                  router.push(`/companies/${companyId}/valuation`);
+                }
               }}
               className="inline-flex h-9 items-center gap-2 rounded-md border bg-card px-3 text-sm font-medium transition-colors cursor-pointer hover:bg-muted"
             >
-              Open dashboard
+              <FileText className="h-3.5 w-3.5" strokeWidth={2.25} />
+              View Report
             </button>
             <div className="flex items-center gap-2">
               <button
