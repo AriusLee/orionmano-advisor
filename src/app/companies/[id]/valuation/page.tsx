@@ -8,7 +8,6 @@ import {
   Check,
   ChevronDown,
   Download,
-  FileJson,
   FileSpreadsheet,
   FileText,
   Lightbulb,
@@ -40,6 +39,7 @@ interface CompanyMeta {
   website: string | null;
   report_tier: string;
   target_valuation: number | null;
+  valuation_date: string | null;
 }
 
 interface WorkpaperResult {
@@ -91,6 +91,8 @@ export default function ValuationPage({ params }: { params: Promise<{ id: string
   // Eric 2026-05-08 item 6 — per-run valuation date. Defaults to today; the
   // prefill effect overwrites it with the most recent run's date if present.
   const [valuationDate, setValuationDate] = useState<string>(() => new Date().toISOString().slice(0, 10));
+  const [savedValuationDate, setSavedValuationDate] = useState<string | null>(null);
+  const [savingValuationDate, setSavingValuationDate] = useState(false);
   const autoRegenFiredRef = useRef(false);
 
   // Prefill the run-config input. Precedence: Company.target_valuation (saved
@@ -109,39 +111,25 @@ export default function ValuationPage({ params }: { params: Promise<{ id: string
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [savedTargetValuation, latest]);
 
-  // Once we know the most recent run's valuation date, surface it as the
-  // default so a 'Regenerate' click reuses the same as-of date. The user can
-  // still override before clicking.
+  // Prefill the valuation date input. Precedence: Company.valuation_date
+  // (saved default) > latest run's engagement.valuation_date > today (the
+  // initial state). Only fires once so the user's typing isn't overwritten.
   const valuationDateInitializedRef = useRef(false);
   useEffect(() => {
     if (valuationDateInitializedRef.current) return;
+    if (savedValuationDate && /^\d{4}-\d{2}-\d{2}/.test(savedValuationDate)) {
+      setValuationDate(savedValuationDate.slice(0, 10));
+      valuationDateInitializedRef.current = true;
+      return;
+    }
     const prior = latest?.summary?.engagement?.valuation_date;
     if (prior && /^\d{4}-\d{2}-\d{2}/.test(prior)) {
       setValuationDate(prior.slice(0, 10));
       valuationDateInitializedRef.current = true;
     }
-  }, [latest]);
+  }, [savedValuationDate, latest]);
 
   const reuploadInputRef = useRef<HTMLInputElement>(null);
-
-  // Download the latest run's inputs JSON to disk so the user can edit it offline.
-  // Eric 2026-05-08 item 8: half of the re-upload-and-re-evaluate round trip.
-  const handleDownloadInputs = useCallback(() => {
-    const inputs = latest?.inputs;
-    if (!inputs) {
-      toast.error('No inputs available yet — generate the workpaper first.');
-      return;
-    }
-    const blob = new Blob([JSON.stringify(inputs, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = (latest.xlsx_filename || 'valuation.xlsx').replace(/\.xlsx$/, '.inputs.json');
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-  }, [latest]);
 
   const handleReuploadClick = useCallback(() => {
     reuploadInputRef.current?.click();
@@ -257,6 +245,26 @@ export default function ValuationPage({ params }: { params: Promise<{ id: string
     }
   }, [id, savingTarget, targetValuation]);
 
+  const handleSaveValuationDate = useCallback(async () => {
+    if (savingValuationDate) return;
+    setSavingValuationDate(true);
+    try {
+      const vd = valuationDate.trim() && /^\d{4}-\d{2}-\d{2}$/.test(valuationDate.trim())
+        ? valuationDate.trim()
+        : null;
+      const updated = await apiJson<CompanyMeta>(`/companies/${id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ valuation_date: vd }),
+      });
+      setSavedValuationDate(updated.valuation_date ?? null);
+      toast.success(vd == null ? 'Valuation date cleared' : 'Valuation date saved');
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : 'Save failed');
+    } finally {
+      setSavingValuationDate(false);
+    }
+  }, [id, savingValuationDate, valuationDate]);
+
   useEffect(() => {
     if (!generating || !generationStartedAt) return;
     const start = new Date(generationStartedAt).getTime();
@@ -271,6 +279,42 @@ export default function ValuationPage({ params }: { params: Promise<{ id: string
     return () => clearInterval(t);
   }, [generating, generationStartedAt]);
 
+  // Polling fallback — the /generate-workpaper POST can run 60-180s, and if
+  // the connection silently drops (uvicorn reload, proxy timeout, sleeping
+  // tab) the handleGenerate promise never resolves and the UI stays stuck
+  // spinning. Watch /latest every 5s while generating; if it returns a
+  // summary newer than when we started, complete the run from that data.
+  useEffect(() => {
+    if (!generating || !generationStartedAt) return;
+    const startMs = new Date(generationStartedAt).getTime();
+    const interval = setInterval(async () => {
+      try {
+        const res = await apiFetch(`/companies/${id}/valuation/latest`);
+        const fresh = await res.json();
+        if (!fresh || !fresh.summary || !fresh.generated_at) return;
+        const freshMs = new Date(fresh.generated_at).getTime();
+        if (!Number.isFinite(freshMs) || freshMs < startMs) return;
+        // Fresh run detected — adopt it and exit generating state.
+        setLatest(fresh as LatestSummary);
+        setResult({
+          status: 'success',
+          message: 'Workpaper generated (recovered via polling — connection dropped)',
+          xlsx_url: fresh.xlsx_url,
+          warnings: fresh.warnings ?? [],
+          errors: fresh.errors ?? [],
+          generatedAt: fresh.generated_at,
+          summary: fresh.summary,
+          report_id: fresh.report_id ?? null,
+        });
+        setGenerating(false);
+        setGenerationStartedAt(null);
+      } catch {
+        // 404 / network blip — keep polling, the run is still in flight.
+      }
+    }, 5000);
+    return () => clearInterval(interval);
+  }, [generating, generationStartedAt, id]);
+
   const loadData = useCallback(() => {
     Promise.all([
       apiJson<Document[]>(`/companies/${id}/documents`),
@@ -281,6 +325,7 @@ export default function ValuationPage({ params }: { params: Promise<{ id: string
         setDocs(d);
         setCompany(c);
         setSavedTargetValuation(c.target_valuation ?? null);
+        setSavedValuationDate(c.valuation_date ?? null);
         if (l && l.summary) setLatest(l as LatestSummary);
       })
       .catch(() => {})
@@ -418,6 +463,9 @@ export default function ValuationPage({ params }: { params: Promise<{ id: string
         savedValue={savedTargetValuation}
         onSave={handleSaveTarget}
         saving={savingTarget}
+        savedValuationDate={savedValuationDate}
+        onSaveValuationDate={handleSaveValuationDate}
+        savingValuationDate={savingValuationDate}
       />
 
       {generating ? (
@@ -440,9 +488,7 @@ export default function ValuationPage({ params }: { params: Promise<{ id: string
             companyId={id}
             reportId={latest.report_id ?? null}
             onRegenerate={handleGenerate}
-            onDownloadInputs={handleDownloadInputs}
             onReupload={handleReuploadClick}
-            hasInputs={Boolean(latest.inputs)}
           />
           <ValuationDashboard
             summary={latest.summary}
@@ -654,6 +700,9 @@ function RunConfigCard({
   savedValue,
   onSave,
   saving,
+  savedValuationDate,
+  onSaveValuationDate,
+  savingValuationDate,
 }: {
   targetValuation: string;
   onChange: (v: string) => void;
@@ -663,6 +712,9 @@ function RunConfigCard({
   savedValue: number | null;
   onSave: () => void;
   saving: boolean;
+  savedValuationDate: string | null;
+  onSaveValuationDate: () => void;
+  savingValuationDate: boolean;
 }) {
   // currencyLabel may arrive as "USD '000" — strip the unit suffix for the
   // target_valuation display because the input is ACTUAL currency, not
@@ -674,6 +726,12 @@ function RunConfigCard({
   const isDirty =
     (currentNumeric === null && savedValue !== null) ||
     (currentNumeric !== null && currentNumeric !== savedValue);
+  const trimmedDate = valuationDate.trim();
+  const currentDate = trimmedDate && /^\d{4}-\d{2}-\d{2}$/.test(trimmedDate) ? trimmedDate : null;
+  const savedDateNormalized = savedValuationDate ? savedValuationDate.slice(0, 10) : null;
+  const isDateDirty =
+    (currentDate === null && savedDateNormalized !== null) ||
+    (currentDate !== null && currentDate !== savedDateNormalized);
   return (
     <div className="rounded-2xl border bg-card p-4 flex items-start gap-4">
       <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 ring-1 ring-primary/20 mt-0.5">
@@ -749,6 +807,34 @@ function RunConfigCard({
             onChange={(e) => onValuationDateChange(e.target.value)}
             className="h-9 w-44 text-sm tabular-nums"
           />
+          <button
+            type="button"
+            onClick={onSaveValuationDate}
+            disabled={savingValuationDate || !isDateDirty}
+            className={cn(
+              'inline-flex h-9 items-center gap-1.5 rounded-md border px-3 text-xs font-medium transition-colors',
+              savingValuationDate || !isDateDirty
+                ? 'cursor-not-allowed border-border/60 bg-muted/40 text-muted-foreground'
+                : 'cursor-pointer bg-card hover:bg-muted',
+            )}
+          >
+            {savingValuationDate ? (
+              <>
+                <Loader2 className="h-3 w-3 animate-spin" />
+                Saving…
+              </>
+            ) : !isDateDirty && savedDateNormalized !== null ? (
+              <>
+                <Check className="h-3 w-3" />
+                Saved
+              </>
+            ) : (
+              <>
+                <Save className="h-3 w-3" strokeWidth={2.25} />
+                Save
+              </>
+            )}
+          </button>
           <span className="text-[11px] text-muted-foreground/80 whitespace-nowrap">
             Anchors forecasts, risk-free rate, comp multiples
           </span>
@@ -767,9 +853,7 @@ function WorkpaperHeaderCard({
   companyId,
   reportId,
   onRegenerate,
-  onDownloadInputs,
   onReupload,
-  hasInputs,
 }: {
   xlsxUrl: string;
   filename: string;
@@ -778,9 +862,7 @@ function WorkpaperHeaderCard({
   companyId: string;
   reportId: string | null;
   onRegenerate: () => void;
-  onDownloadInputs: () => void;
   onReupload: () => void;
-  hasInputs: boolean;
 }) {
   const downloadHref = uploadUrl(xlsxUrl);
   return (
@@ -812,15 +894,6 @@ function WorkpaperHeaderCard({
             View Report
           </a>
         )}
-        <button
-          onClick={onDownloadInputs}
-          disabled={!hasInputs}
-          title="Download the inputs JSON for this run so you can edit it offline"
-          className="inline-flex h-9 items-center gap-2 rounded-lg border bg-card px-3 text-sm font-medium transition-all duration-150 cursor-pointer hover:bg-muted active:translate-y-px disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          <FileJson className="h-3.5 w-3.5" strokeWidth={2.25} />
-          Inputs JSON
-        </button>
         <button
           onClick={onReupload}
           title="Upload an edited xlsx (or inputs JSON) to regenerate the workpaper with your manual overrides"
