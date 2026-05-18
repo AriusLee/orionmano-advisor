@@ -55,6 +55,10 @@ interface PinnableParam {
 }
 const PINNABLE_PARAMS: PinnableParam[] = [
   { key: 'revenue_y0',                  label: 'Revenue Y0 (audited base)', type: 'currency', section: 'Projections' },
+  { key: 'gross_profit_y0',             label: 'Gross profit Y0',           type: 'currency', section: 'Projections' },
+  { key: 'opex_y0',                     label: 'Operating expenses Y0 (negative)', type: 'currency', section: 'Projections' },
+  { key: 'ebitda_y0',                   label: 'EBITDA Y0',                 type: 'currency', section: 'Projections' },
+  { key: 'ebit_y0',                     label: 'EBIT Y0',                   type: 'currency', section: 'Projections' },
   { key: 'revenue_growth_y1',           label: 'Revenue growth — Y1',        type: 'percent',  section: 'Projections' },
   { key: 'revenue_growth_y2',           label: 'Revenue growth — Y2',        type: 'percent',  section: 'Projections' },
   { key: 'revenue_growth_y3',           label: 'Revenue growth — Y3',        type: 'percent',  section: 'Projections' },
