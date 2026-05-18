@@ -41,6 +41,16 @@ interface CompanyMeta {
   target_valuation: number | null;
   valuation_date: string | null;
   pinned_overrides: Record<string, number | null> | null;
+  pinned_cocos: Record<string, { include?: boolean; selected_for_wacc?: boolean }> | null;
+}
+
+interface CocoSummary {
+  tier?: number;
+  include?: boolean;
+  selected_for_wacc?: boolean;
+  company?: string;
+  ticker?: string;
+  business_description?: string;
 }
 
 // Mirror of backend PINNABLE_PARAMS (produce_valuation_inputs.py). Kept in
@@ -143,6 +153,11 @@ export default function ValuationPage({ params }: { params: Promise<{ id: string
   const [savedPinnedOverrides, setSavedPinnedOverrides] = useState<Record<string, number | null>>({});
   const [savingPinned, setSavingPinned] = useState(false);
   const pinnedInitializedRef = useRef(false);
+  // Pinned CoCo selection — keyed by ticker → {include, selected_for_wacc}
+  const [pinnedCocosDraft, setPinnedCocosDraft] = useState<Record<string, { include: boolean; selected_for_wacc: boolean }>>({});
+  const [savedPinnedCocos, setSavedPinnedCocos] = useState<Record<string, { include?: boolean; selected_for_wacc?: boolean }>>({});
+  const [savingPinnedCocos, setSavingPinnedCocos] = useState(false);
+  const pinnedCocosInitializedRef = useRef(false);
   const autoRegenFiredRef = useRef(false);
 
   // Prefill the run-config input. Precedence: Company.target_valuation (saved
@@ -295,6 +310,43 @@ export default function ValuationPage({ params }: { params: Promise<{ id: string
     }
   }, [id, savingTarget, targetValuation]);
 
+  // Seed pinned-cocos draft from the latest run's cocos + saved overrides
+  // once both are loaded. After that, the draft is user-controlled.
+  useEffect(() => {
+    if (pinnedCocosInitializedRef.current) return;
+    const cocos = (latest?.inputs?.cocos as CocoSummary[] | undefined) ?? null;
+    if (!cocos || cocos.length === 0) return;
+    const seed: Record<string, { include: boolean; selected_for_wacc: boolean }> = {};
+    for (const c of cocos) {
+      const t = (c.ticker ?? '').trim();
+      if (!t) continue;
+      const saved = savedPinnedCocos[t] ?? {};
+      seed[t] = {
+        include: saved.include ?? c.include ?? false,
+        selected_for_wacc: saved.selected_for_wacc ?? c.selected_for_wacc ?? false,
+      };
+    }
+    setPinnedCocosDraft(seed);
+    pinnedCocosInitializedRef.current = true;
+  }, [latest, savedPinnedCocos]);
+
+  const handleSavePinnedCocos = useCallback(async () => {
+    if (savingPinnedCocos) return;
+    setSavingPinnedCocos(true);
+    try {
+      const updated = await apiJson<CompanyMeta>(`/companies/${id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ pinned_cocos: pinnedCocosDraft }),
+      });
+      setSavedPinnedCocos(updated.pinned_cocos ?? {});
+      toast.success(`Saved ${Object.keys(pinnedCocosDraft).length} CoCo selection${Object.keys(pinnedCocosDraft).length === 1 ? '' : 's'}`);
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : 'Save failed');
+    } finally {
+      setSavingPinnedCocos(false);
+    }
+  }, [id, pinnedCocosDraft, savingPinnedCocos]);
+
   const handleSavePinned = useCallback(async () => {
     if (savingPinned) return;
     setSavingPinned(true);
@@ -423,6 +475,8 @@ export default function ValuationPage({ params }: { params: Promise<{ id: string
           );
           pinnedInitializedRef.current = true;
         }
+        const pinCocos = c.pinned_cocos ?? {};
+        setSavedPinnedCocos(pinCocos);
         if (l && l.summary) setLatest(l as LatestSummary);
       })
       .catch(() => {})
@@ -572,6 +626,17 @@ export default function ValuationPage({ params }: { params: Promise<{ id: string
         onSave={handleSavePinned}
         saving={savingPinned}
       />
+
+      {latest && Array.isArray(latest.inputs?.cocos) && (latest.inputs?.cocos as unknown[]).length > 0 && (
+        <PinnedCocosCard
+          cocos={latest.inputs?.cocos as CocoSummary[]}
+          draft={pinnedCocosDraft}
+          onChange={setPinnedCocosDraft}
+          savedPinned={savedPinnedCocos}
+          onSave={handleSavePinnedCocos}
+          saving={savingPinnedCocos}
+        />
+      )}
 
       {generating ? (
         <GeneratingState
@@ -942,6 +1007,126 @@ function RunConfigCard({
           </button>
           <span className="text-[11px] text-muted-foreground/80 whitespace-nowrap">
             Anchors forecasts, risk-free rate, comp multiples
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
+function PinnedCocosCard({
+  cocos,
+  draft,
+  onChange,
+  savedPinned,
+  onSave,
+  saving,
+}: {
+  cocos: CocoSummary[];
+  draft: Record<string, { include: boolean; selected_for_wacc: boolean }>;
+  onChange: (next: Record<string, { include: boolean; selected_for_wacc: boolean }>) => void;
+  savedPinned: Record<string, { include?: boolean; selected_for_wacc?: boolean }>;
+  onSave: () => void;
+  saving: boolean;
+}) {
+  // Dirty when any ticker's draft differs from saved
+  const isDirty = (() => {
+    for (const [ticker, d] of Object.entries(draft)) {
+      const s = savedPinned[ticker];
+      if (!s) return true;
+      if ((s.include ?? false) !== d.include) return true;
+      if ((s.selected_for_wacc ?? false) !== d.selected_for_wacc) return true;
+    }
+    // Check if any saved key was removed from draft
+    for (const ticker of Object.keys(savedPinned)) {
+      if (!(ticker in draft)) return true;
+    }
+    return false;
+  })();
+
+  const toggle = (ticker: string, field: 'include' | 'selected_for_wacc', value: boolean) => {
+    const cur = draft[ticker] ?? { include: false, selected_for_wacc: false };
+    const next = { ...cur, [field]: value };
+    // selected_for_wacc=true implies include=true
+    if (field === 'selected_for_wacc' && value) next.include = true;
+    onChange({ ...draft, [ticker]: next });
+  };
+
+  return (
+    <div className="rounded-2xl border bg-card p-4 flex items-start gap-4">
+      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 ring-1 ring-primary/20 mt-0.5">
+        <Target className="h-4 w-4 text-primary" strokeWidth={2.25} />
+      </div>
+      <div className="flex-1 min-w-0 space-y-3">
+        <div>
+          <h2 className="text-sm font-semibold tracking-tight">Pinned CoCo selection</h2>
+          <p className="text-[11px] text-muted-foreground/80">
+            Lock which comparable companies are included and which feed the WACC β derivation. Pinned selections persist across regenerates and override the LLM's choices.
+          </p>
+        </div>
+        <div className="rounded-lg border bg-muted/20 overflow-hidden">
+          <div className="grid grid-cols-[auto_minmax(0,1fr)_auto_auto] gap-x-3 px-3 py-2 border-b text-[11px] font-medium uppercase tracking-wide text-muted-foreground/80">
+            <span>Tier</span>
+            <span>Company / Ticker</span>
+            <span className="text-center w-16">Include</span>
+            <span className="text-center w-16">WACC</span>
+          </div>
+          <div className="max-h-72 overflow-y-auto divide-y">
+            {cocos.map((c, i) => {
+              const ticker = (c.ticker ?? '').trim();
+              if (!ticker) return null;
+              const row = draft[ticker] ?? { include: c.include ?? false, selected_for_wacc: c.selected_for_wacc ?? false };
+              return (
+                <div key={`${ticker}-${i}`} className="grid grid-cols-[auto_minmax(0,1fr)_auto_auto] gap-x-3 px-3 py-2 items-center text-xs">
+                  <span className="font-mono text-muted-foreground tabular-nums">T{c.tier ?? '?'}</span>
+                  <div className="min-w-0">
+                    <div className="truncate font-medium">{c.company ?? '(unnamed)'}</div>
+                    <div className="truncate text-[10px] text-muted-foreground/70 font-mono">{ticker}{c.business_description ? ` · ${c.business_description}` : ''}</div>
+                  </div>
+                  <div className="flex items-center justify-center w-16">
+                    <input
+                      type="checkbox"
+                      className="h-4 w-4 cursor-pointer accent-primary"
+                      checked={row.include}
+                      onChange={(e) => toggle(ticker, 'include', e.target.checked)}
+                    />
+                  </div>
+                  <div className="flex items-center justify-center w-16">
+                    <input
+                      type="checkbox"
+                      className="h-4 w-4 cursor-pointer accent-primary"
+                      checked={row.selected_for_wacc}
+                      onChange={(e) => toggle(ticker, 'selected_for_wacc', e.target.checked)}
+                    />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+        <div className="flex items-center gap-2 pt-1">
+          <button
+            type="button"
+            onClick={onSave}
+            disabled={saving || !isDirty}
+            className={cn(
+              'inline-flex h-9 items-center gap-1.5 rounded-md border px-3 text-xs font-medium transition-colors',
+              saving || !isDirty
+                ? 'cursor-not-allowed border-border/60 bg-muted/40 text-muted-foreground'
+                : 'cursor-pointer bg-card hover:bg-muted',
+            )}
+          >
+            {saving ? (
+              <><Loader2 className="h-3 w-3 animate-spin" /> Saving…</>
+            ) : !isDirty ? (
+              <><Check className="h-3 w-3" /> Saved</>
+            ) : (
+              <><Save className="h-3 w-3" strokeWidth={2.25} /> Save</>
+            )}
+          </button>
+          <span className="text-[11px] text-muted-foreground/70">
+            Selecting for WACC implies include.
           </span>
         </div>
       </div>
