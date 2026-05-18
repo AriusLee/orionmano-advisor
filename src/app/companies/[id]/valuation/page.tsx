@@ -40,7 +40,46 @@ interface CompanyMeta {
   report_tier: string;
   target_valuation: number | null;
   valuation_date: string | null;
+  pinned_overrides: Record<string, number | null> | null;
 }
+
+// Mirror of backend PINNABLE_PARAMS (produce_valuation_inputs.py). Kept in
+// sync manually — if a new key is added to the backend whitelist, add it here
+// too or the dropdown won't surface it.
+type PinnableType = 'currency' | 'percent' | 'number';
+interface PinnableParam {
+  key: string;
+  label: string;
+  type: PinnableType;
+  section: string;
+}
+const PINNABLE_PARAMS: PinnableParam[] = [
+  { key: 'revenue_y0',                  label: 'Revenue Y0 (audited base)', type: 'currency', section: 'Projections' },
+  { key: 'revenue_growth_y1',           label: 'Revenue growth — Y1',        type: 'percent',  section: 'Projections' },
+  { key: 'revenue_growth_y2',           label: 'Revenue growth — Y2',        type: 'percent',  section: 'Projections' },
+  { key: 'revenue_growth_y3',           label: 'Revenue growth — Y3',        type: 'percent',  section: 'Projections' },
+  { key: 'revenue_growth_y4',           label: 'Revenue growth — Y4',        type: 'percent',  section: 'Projections' },
+  { key: 'revenue_growth_y5',           label: 'Revenue growth — Y5',        type: 'percent',  section: 'Projections' },
+  { key: 'gross_margin_y1',             label: 'Gross margin — Y1',          type: 'percent',  section: 'Projections' },
+  { key: 'gross_margin_y2',             label: 'Gross margin — Y2',          type: 'percent',  section: 'Projections' },
+  { key: 'gross_margin_y3',             label: 'Gross margin — Y3',          type: 'percent',  section: 'Projections' },
+  { key: 'gross_margin_y4',             label: 'Gross margin — Y4',          type: 'percent',  section: 'Projections' },
+  { key: 'gross_margin_y5',             label: 'Gross margin — Y5',          type: 'percent',  section: 'Projections' },
+  { key: 'terminal_growth_rate',        label: 'Terminal growth rate',       type: 'percent',  section: 'Terminal' },
+  { key: 'risk_free_rate',              label: 'Risk-free rate',             type: 'percent',  section: 'WACC' },
+  { key: 'equity_risk_premium',         label: 'Equity risk premium',        type: 'percent',  section: 'WACC' },
+  { key: 'country_risk_premium',        label: 'Country risk premium',       type: 'percent',  section: 'WACC' },
+  { key: 'unlevered_beta_pm',           label: 'Unlevered β (per-mgmt)',     type: 'number',   section: 'WACC' },
+  { key: 'size_premium_pm',             label: 'Size premium (per-mgmt)',    type: 'percent',  section: 'WACC' },
+  { key: 'specific_risk_premium_pm',    label: 'Specific risk (per-mgmt)',   type: 'percent',  section: 'WACC' },
+  { key: 'pretax_cost_of_debt_pm',      label: 'Pretax Kd (per-mgmt)',       type: 'percent',  section: 'WACC' },
+  { key: 'dlom_pct',                    label: 'DLOM',                        type: 'percent',  section: 'Bridge' },
+  { key: 'dloc_pct',                    label: 'DLOC',                        type: 'percent',  section: 'Bridge' },
+  { key: 'shares_outstanding',          label: 'Shares outstanding (basic)', type: 'number',   section: 'Bridge' },
+  { key: 'shares_outstanding_diluted',  label: 'Shares outstanding (diluted)', type: 'number', section: 'Bridge' },
+];
+const PINNABLE_BY_KEY: Record<string, PinnableParam> =
+  PINNABLE_PARAMS.reduce((acc, p) => ({ ...acc, [p.key]: p }), {});
 
 interface WorkpaperResult {
   status: 'success' | 'partial' | 'failed';
@@ -93,6 +132,13 @@ export default function ValuationPage({ params }: { params: Promise<{ id: string
   const [valuationDate, setValuationDate] = useState<string>(() => new Date().toISOString().slice(0, 10));
   const [savedValuationDate, setSavedValuationDate] = useState<string | null>(null);
   const [savingValuationDate, setSavingValuationDate] = useState(false);
+  // Eric 2026-05-17 — pinned overrides. drafts: editable rows the user is
+  // composing (string-valued for the input); saved: what's persisted on Company
+  // (number-valued, in the units the backend expects — 0.25 for 25%, raw for currency).
+  const [pinnedDrafts, setPinnedDrafts] = useState<Array<{ key: string; value: string }>>([]);
+  const [savedPinnedOverrides, setSavedPinnedOverrides] = useState<Record<string, number | null>>({});
+  const [savingPinned, setSavingPinned] = useState(false);
+  const pinnedInitializedRef = useRef(false);
   const autoRegenFiredRef = useRef(false);
 
   // Prefill the run-config input. Precedence: Company.target_valuation (saved
@@ -245,6 +291,38 @@ export default function ValuationPage({ params }: { params: Promise<{ id: string
     }
   }, [id, savingTarget, targetValuation]);
 
+  const handleSavePinned = useCallback(async () => {
+    if (savingPinned) return;
+    setSavingPinned(true);
+    try {
+      // Convert drafts → wire format: drop empty values, parse percent → decimal,
+      // dedupe by key (last wins).
+      const wire: Record<string, number> = {};
+      for (const row of pinnedDrafts) {
+        if (!row.key || !row.value.trim()) continue;
+        const param = PINNABLE_BY_KEY[row.key];
+        if (!param) continue;
+        const n = Number(row.value);
+        if (!Number.isFinite(n)) continue;
+        wire[row.key] = param.type === 'percent' ? n / 100 : n;
+      }
+      const updated = await apiJson<CompanyMeta>(`/companies/${id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ pinned_overrides: wire }),
+      });
+      setSavedPinnedOverrides(updated.pinned_overrides ?? {});
+      toast.success(
+        Object.keys(wire).length === 0
+          ? 'Pinned overrides cleared'
+          : `Saved ${Object.keys(wire).length} pinned parameter${Object.keys(wire).length === 1 ? '' : 's'}`
+      );
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : 'Save failed');
+    } finally {
+      setSavingPinned(false);
+    }
+  }, [id, pinnedDrafts, savingPinned]);
+
   const handleSaveValuationDate = useCallback(async () => {
     if (savingValuationDate) return;
     setSavingValuationDate(true);
@@ -326,6 +404,21 @@ export default function ValuationPage({ params }: { params: Promise<{ id: string
         setCompany(c);
         setSavedTargetValuation(c.target_valuation ?? null);
         setSavedValuationDate(c.valuation_date ?? null);
+        const pinned = c.pinned_overrides ?? {};
+        setSavedPinnedOverrides(pinned);
+        if (!pinnedInitializedRef.current) {
+          // Seed the editable drafts from saved overrides on first load.
+          setPinnedDrafts(
+            Object.entries(pinned)
+              .filter(([k, v]) => v != null && k in PINNABLE_BY_KEY)
+              .map(([k, v]) => {
+                const p = PINNABLE_BY_KEY[k];
+                const displayValue = p.type === 'percent' ? String((v as number) * 100) : String(v);
+                return { key: k, value: displayValue };
+              })
+          );
+          pinnedInitializedRef.current = true;
+        }
         if (l && l.summary) setLatest(l as LatestSummary);
       })
       .catch(() => {})
@@ -466,6 +559,14 @@ export default function ValuationPage({ params }: { params: Promise<{ id: string
         savedValuationDate={savedValuationDate}
         onSaveValuationDate={handleSaveValuationDate}
         savingValuationDate={savingValuationDate}
+      />
+
+      <PinnedParamsCard
+        drafts={pinnedDrafts}
+        onChange={setPinnedDrafts}
+        savedOverrides={savedPinnedOverrides}
+        onSave={handleSavePinned}
+        saving={savingPinned}
       />
 
       {generating ? (
@@ -838,6 +939,153 @@ function RunConfigCard({
           <span className="text-[11px] text-muted-foreground/80 whitespace-nowrap">
             Anchors forecasts, risk-free rate, comp multiples
           </span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
+function PinnedParamsCard({
+  drafts,
+  onChange,
+  savedOverrides,
+  onSave,
+  saving,
+}: {
+  drafts: Array<{ key: string; value: string }>;
+  onChange: (next: Array<{ key: string; value: string }>) => void;
+  savedOverrides: Record<string, number | null>;
+  onSave: () => void;
+  saving: boolean;
+}) {
+  // Detect dirty: compare current draft set vs savedOverrides.
+  const draftWire: Record<string, number | null> = (() => {
+    const out: Record<string, number | null> = {};
+    for (const row of drafts) {
+      if (!row.key || !row.value.trim()) continue;
+      const param = PINNABLE_BY_KEY[row.key];
+      if (!param) continue;
+      const n = Number(row.value);
+      if (!Number.isFinite(n)) continue;
+      out[row.key] = param.type === 'percent' ? n / 100 : n;
+    }
+    return out;
+  })();
+  const isDirty = (() => {
+    const draftKeys = Object.keys(draftWire);
+    const savedKeys = Object.keys(savedOverrides).filter(k => savedOverrides[k] != null);
+    if (draftKeys.length !== savedKeys.length) return true;
+    for (const k of draftKeys) {
+      const dv = draftWire[k];
+      const sv = savedOverrides[k];
+      if (sv == null || dv == null) return true;
+      if (Math.abs(dv - sv) > 1e-9) return true;
+    }
+    return false;
+  })();
+  const usedKeys = new Set(drafts.map(r => r.key).filter(Boolean));
+  const addRow = () => {
+    // Pick the first param key that isn't already in the drafts.
+    const next = PINNABLE_PARAMS.find(p => !usedKeys.has(p.key));
+    if (!next) return;
+    onChange([...drafts, { key: next.key, value: '' }]);
+  };
+  const updateRow = (idx: number, patch: Partial<{ key: string; value: string }>) => {
+    onChange(drafts.map((r, i) => i === idx ? { ...r, ...patch } : r));
+  };
+  const removeRow = (idx: number) => {
+    onChange(drafts.filter((_, i) => i !== idx));
+  };
+
+  return (
+    <div className="rounded-2xl border bg-card p-4 flex items-start gap-4">
+      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 ring-1 ring-primary/20 mt-0.5">
+        <Lightbulb className="h-4 w-4 text-primary" strokeWidth={2.25} />
+      </div>
+      <div className="flex-1 min-w-0 space-y-3">
+        <div>
+          <h2 className="text-sm font-semibold tracking-tight">Pinned parameters</h2>
+          <p className="text-[11px] text-muted-foreground/80">
+            Values the producer must preserve verbatim across regenerates. Other params calibrate around these to hit the target valuation.
+          </p>
+        </div>
+
+        {drafts.length === 0 && (
+          <p className="text-[11px] text-muted-foreground/60 italic">
+            No pinned parameters. Add one to lock a specific value across regenerates.
+          </p>
+        )}
+
+        <div className="space-y-2">
+          {drafts.map((row, idx) => {
+            const param = PINNABLE_BY_KEY[row.key];
+            const unitHint = param?.type === 'percent' ? '%' : param?.type === 'currency' ? "(workpaper unit)" : '';
+            const placeholder = param?.type === 'percent' ? 'e.g. 25' : param?.type === 'currency' ? 'e.g. 45000' : 'value';
+            return (
+              <div key={idx} className="flex items-center gap-2 flex-wrap">
+                <select
+                  value={row.key}
+                  onChange={(e) => updateRow(idx, { key: e.target.value, value: '' })}
+                  className="h-9 w-64 rounded-md border bg-card px-2 text-xs cursor-pointer"
+                >
+                  {PINNABLE_PARAMS.map(p => (
+                    <option key={p.key} value={p.key} disabled={p.key !== row.key && usedKeys.has(p.key)}>
+                      {p.section} — {p.label}
+                    </option>
+                  ))}
+                </select>
+                <Input
+                  type="number"
+                  inputMode="decimal"
+                  step="any"
+                  placeholder={placeholder}
+                  value={row.value}
+                  onChange={(e) => updateRow(idx, { value: e.target.value })}
+                  className="h-9 w-32 text-sm tabular-nums"
+                />
+                <span className="text-[11px] text-muted-foreground/70 font-mono">{unitHint}</span>
+                <button
+                  type="button"
+                  onClick={() => removeRow(idx)}
+                  title="Remove this pin"
+                  className="inline-flex h-9 w-9 items-center justify-center rounded-md border bg-card text-muted-foreground transition-colors cursor-pointer hover:bg-muted hover:text-foreground"
+                >
+                  ×
+                </button>
+              </div>
+            );
+          })}
+        </div>
+
+        <div className="flex items-center gap-2 pt-1">
+          <button
+            type="button"
+            onClick={addRow}
+            disabled={usedKeys.size >= PINNABLE_PARAMS.length}
+            className="inline-flex h-9 items-center gap-1.5 rounded-md border bg-card px-3 text-xs font-medium transition-colors cursor-pointer hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            + Add parameter
+          </button>
+          <button
+            type="button"
+            onClick={onSave}
+            disabled={saving || !isDirty}
+            className={cn(
+              'inline-flex h-9 items-center gap-1.5 rounded-md border px-3 text-xs font-medium transition-colors',
+              saving || !isDirty
+                ? 'cursor-not-allowed border-border/60 bg-muted/40 text-muted-foreground'
+                : 'cursor-pointer bg-card hover:bg-muted',
+            )}
+          >
+            {saving ? (
+              <><Loader2 className="h-3 w-3 animate-spin" /> Saving…</>
+            ) : !isDirty ? (
+              <><Check className="h-3 w-3" /> Saved</>
+            ) : (
+              <><Save className="h-3 w-3" strokeWidth={2.25} /> Save</>
+            )}
+          </button>
         </div>
       </div>
     </div>
