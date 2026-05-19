@@ -232,12 +232,10 @@ function heatColor(v: number | null, base: number): string {
 
 export function ValuationDashboard({
   summary,
-  generatedAt,
   xlsxUrl,
   warnings,
 }: {
   summary: ValuationSummary;
-  generatedAt?: string;
   xlsxUrl?: string | null;
   warnings?: string[];
 }) {
@@ -300,28 +298,8 @@ export function ValuationDashboard({
     ];
   }, [waccPm]);
 
-  const headerLine = [
-    summary.engagement.company_name,
-    summary.engagement.valuation_date && `as of ${summary.engagement.valuation_date}`,
-    summary.engagement.country,
-    summary.engagement.industry,
-    summary.engagement.exchange_platform && `→ ${summary.engagement.exchange_platform}`,
-    summary.engagement.target_valuation != null && `target ${formatCurrency(summary.engagement.target_valuation, undefined, currency)}`,
-  ].filter(Boolean).join(' · ');
-
   return (
     <div className="space-y-6">
-      {headerLine && (
-        <div className="flex items-center justify-between gap-4">
-          <p className="text-xs text-muted-foreground truncate">{headerLine}</p>
-          {generatedAt && (
-            <p className="text-[11px] text-muted-foreground/70 tabular-nums shrink-0">
-              Generated {new Date(generatedAt).toLocaleString()}
-            </p>
-          )}
-        </div>
-      )}
-
       {/* Headline stats — primary outputs on row 1, drivers on row 2 */}
       <div className="space-y-3">
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">

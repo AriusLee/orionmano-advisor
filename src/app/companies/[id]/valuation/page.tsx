@@ -42,6 +42,7 @@ interface CompanyMeta {
   valuation_date: string | null;
   pinned_overrides: Record<string, number | null> | null;
   pinned_cocos: Record<string, { include?: boolean; selected_for_wacc?: boolean }> | null;
+  business_development_plan: string | null;
 }
 
 interface CocoSummary {
@@ -69,6 +70,8 @@ const PINNABLE_PARAMS: PinnableParam[] = [
   { key: 'opex_y0',                     label: 'Operating expenses Y0 (negative)', type: 'currency', section: 'Projections' },
   { key: 'ebitda_y0',                   label: 'EBITDA Y0',                 type: 'currency', section: 'Projections' },
   { key: 'ebit_y0',                     label: 'EBIT Y0',                   type: 'currency', section: 'Projections' },
+  { key: 'tax_y0',                      label: 'Tax Y0 (negative)',         type: 'currency', section: 'Projections' },
+  { key: 'net_income_y0',               label: 'Net income Y0',             type: 'currency', section: 'Projections' },
   { key: 'revenue_growth_y1',           label: 'Revenue growth — Y1',        type: 'percent',  section: 'Projections' },
   { key: 'revenue_growth_y2',           label: 'Revenue growth — Y2',        type: 'percent',  section: 'Projections' },
   { key: 'revenue_growth_y3',           label: 'Revenue growth — Y3',        type: 'percent',  section: 'Projections' },
@@ -158,6 +161,11 @@ export default function ValuationPage({ params }: { params: Promise<{ id: string
   const [savedPinnedCocos, setSavedPinnedCocos] = useState<Record<string, { include?: boolean; selected_for_wacc?: boolean }>>({});
   const [savingPinnedCocos, setSavingPinnedCocos] = useState(false);
   const pinnedCocosInitializedRef = useRef(false);
+  // Eric 2026-05-19 #9 — Business Development Plan
+  const [bdpDraft, setBdpDraft] = useState<string>('');
+  const [savedBdp, setSavedBdp] = useState<string>('');
+  const [savingBdp, setSavingBdp] = useState(false);
+  const bdpInitializedRef = useRef(false);
   const autoRegenFiredRef = useRef(false);
 
   // Prefill the run-config input. Precedence: Company.target_valuation (saved
@@ -347,6 +355,24 @@ export default function ValuationPage({ params }: { params: Promise<{ id: string
     }
   }, [id, pinnedCocosDraft, savingPinnedCocos]);
 
+  const handleSaveBdp = useCallback(async () => {
+    if (savingBdp) return;
+    setSavingBdp(true);
+    try {
+      const trimmed = bdpDraft.trim();
+      const updated = await apiJson<CompanyMeta>(`/companies/${id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ business_development_plan: trimmed || null }),
+      });
+      setSavedBdp(updated.business_development_plan ?? '');
+      toast.success(trimmed ? 'Business development plan saved' : 'BDP cleared');
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : 'Save failed');
+    } finally {
+      setSavingBdp(false);
+    }
+  }, [id, bdpDraft, savingBdp]);
+
   const handleSavePinned = useCallback(async () => {
     if (savingPinned) return;
     setSavingPinned(true);
@@ -477,6 +503,12 @@ export default function ValuationPage({ params }: { params: Promise<{ id: string
         }
         const pinCocos = c.pinned_cocos ?? {};
         setSavedPinnedCocos(pinCocos);
+        const bdp = c.business_development_plan ?? '';
+        setSavedBdp(bdp);
+        if (!bdpInitializedRef.current) {
+          setBdpDraft(bdp);
+          bdpInitializedRef.current = true;
+        }
         if (l && l.summary) setLatest(l as LatestSummary);
       })
       .catch(() => {})
@@ -627,6 +659,19 @@ export default function ValuationPage({ params }: { params: Promise<{ id: string
         saving={savingPinned}
       />
 
+      <BdpCard
+        value={bdpDraft}
+        onChange={setBdpDraft}
+        savedValue={savedBdp}
+        onSave={handleSaveBdp}
+        saving={savingBdp}
+      />
+
+      <PriorityDocsCard
+        documents={docs}
+        companyId={id}
+      />
+
       {latest && Array.isArray(latest.inputs?.cocos) && (latest.inputs?.cocos as unknown[]).length > 0 && (
         <PinnedCocosCard
           cocos={latest.inputs?.cocos as CocoSummary[]}
@@ -649,25 +694,28 @@ export default function ValuationPage({ params }: { params: Promise<{ id: string
           safeToNavigate={false}
         />
       ) : latest ? (
-        <div className="space-y-4">
-          <WorkpaperHeaderCard
-            xlsxUrl={latest.xlsx_url}
-            filename={latest.xlsx_filename}
-            generatedAt={latest.generated_at}
-            errorCount={latest.errors?.length ?? 0}
-            companyId={id}
-            reportId={latest.report_id ?? null}
-            onRegenerate={handleGenerate}
-            onReupload={handleReuploadClick}
-          />
-          <ValuationDashboard
-            summary={latest.summary}
-            generatedAt={latest.generated_at}
-            xlsxUrl={latest.xlsx_url}
-            warnings={latest.warnings}
-          />
-          <AssumptionsPanel inputs={latest.inputs} summary={latest.summary} />
-        </div>
+        <>
+          <div className="space-y-4 pb-32">
+            <ValuationDashboard
+              summary={latest.summary}
+              xlsxUrl={latest.xlsx_url}
+              warnings={latest.warnings}
+            />
+            <AssumptionsPanel inputs={latest.inputs} summary={latest.summary} />
+          </div>
+          <div className="sticky -bottom-4 lg:-bottom-6 z-30 -mx-4 lg:-mx-6 -mb-4 lg:-mb-6 border-t bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80 px-4 lg:px-6 pt-3 pb-7 lg:pb-9">
+            <WorkpaperHeaderCard
+              xlsxUrl={latest.xlsx_url}
+              filename={latest.xlsx_filename}
+              generatedAt={latest.generated_at}
+              errorCount={latest.errors?.length ?? 0}
+              companyId={id}
+              reportId={latest.report_id ?? null}
+              onRegenerate={handleGenerate}
+              onReupload={handleReuploadClick}
+            />
+          </div>
+        </>
       ) : result ? (
         <WorkpaperResultCard
           result={result}
@@ -1015,6 +1063,155 @@ function RunConfigCard({
 }
 
 
+function PriorityDocsCard({
+  documents,
+  companyId,
+}: {
+  documents: Document[];
+  companyId: string;
+}) {
+  // Same priority taxonomy as the producer prompt. Each entry: {category id,
+  // human label, tier (primary = must-have, secondary = strengthens)}.
+  const PRIORITY_DOCS: { id: string; label: string; tier: 'primary' | 'secondary' }[] = [
+    { id: 'audit_report',         label: 'Audited financial statements',  tier: 'primary' },
+    { id: 'management_accounts',  label: 'Management accounts (interim)', tier: 'primary' },
+    { id: 'projections',          label: 'Financial projections / BDP',    tier: 'primary' },
+    { id: 'cap_table',            label: 'Cap table',                       tier: 'secondary' },
+    { id: 'shareholder_agreement',label: 'Shareholder agreement',           tier: 'secondary' },
+    { id: 'tax_return',           label: 'Tax returns',                     tier: 'secondary' },
+    { id: 'board_minutes',        label: 'Board minutes',                   tier: 'secondary' },
+  ];
+  const hasDoc = (cat: string) =>
+    documents.some(d =>
+      (d.category || '').trim() === cat ||
+      (Array.isArray(d.categories) && d.categories.includes(cat))
+    );
+  const primaryCount = PRIORITY_DOCS.filter(p => p.tier === 'primary' && hasDoc(p.id)).length;
+  const primaryTotal = PRIORITY_DOCS.filter(p => p.tier === 'primary').length;
+
+  return (
+    <div className="rounded-2xl border bg-card p-4 flex items-start gap-4">
+      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 ring-1 ring-primary/20 mt-0.5">
+        <FileSpreadsheet className="h-4 w-4 text-primary" strokeWidth={2.25} />
+      </div>
+      <div className="flex-1 min-w-0 space-y-3">
+        <div className="flex items-center gap-2 flex-wrap">
+          <h2 className="text-sm font-semibold tracking-tight">Priority financial documents</h2>
+          <span className="text-[10px] font-mono text-muted-foreground/70 px-2 py-0.5 rounded-full bg-muted/40">
+            {primaryCount}/{primaryTotal} core uploaded
+          </span>
+        </div>
+        <p className="text-[11px] text-muted-foreground/80">
+          The AI weighs these categories first when extracting financial data. Missing primary docs limit accuracy; missing secondary docs limit defensibility.
+        </p>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          {PRIORITY_DOCS.map(p => {
+            const present = hasDoc(p.id);
+            return (
+              <div
+                key={p.id}
+                className={cn(
+                  'flex items-center justify-between gap-2 rounded-md border px-3 py-2 text-xs',
+                  present
+                    ? 'border-emerald-500/30 bg-emerald-500/5'
+                    : p.tier === 'primary'
+                      ? 'border-amber-500/30 bg-amber-500/5'
+                      : 'border-border/60 bg-muted/20'
+                )}
+              >
+                <span className="flex items-center gap-2 min-w-0">
+                  {present ? (
+                    <Check className="h-3.5 w-3.5 text-emerald-500 shrink-0" />
+                  ) : p.tier === 'primary' ? (
+                    <AlertTriangle className="h-3.5 w-3.5 text-amber-500 shrink-0" />
+                  ) : (
+                    <div className="h-3.5 w-3.5 rounded-full border border-muted-foreground/40 shrink-0" />
+                  )}
+                  <span className="truncate font-medium">{p.label}</span>
+                </span>
+                <span className="text-[10px] uppercase tracking-wide text-muted-foreground/70 shrink-0">
+                  {p.tier}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+        <a
+          href={`/companies/${companyId}/documents`}
+          className="inline-flex h-9 items-center gap-1.5 rounded-md border bg-card px-3 text-xs font-medium transition-colors cursor-pointer hover:bg-muted self-start"
+        >
+          <Upload className="h-3 w-3" strokeWidth={2.25} />
+          Manage uploads
+        </a>
+      </div>
+    </div>
+  );
+}
+
+
+function BdpCard({
+  value,
+  onChange,
+  savedValue,
+  onSave,
+  saving,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  savedValue: string;
+  onSave: () => void;
+  saving: boolean;
+}) {
+  const isDirty = value.trim() !== (savedValue ?? '').trim();
+  return (
+    <div className="rounded-2xl border bg-card p-4 flex items-start gap-4">
+      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 ring-1 ring-primary/20 mt-0.5">
+        <FileText className="h-4 w-4 text-primary" strokeWidth={2.25} />
+      </div>
+      <div className="flex-1 min-w-0 space-y-3">
+        <div>
+          <h2 className="text-sm font-semibold tracking-tight">Business development plan</h2>
+          <p className="text-[11px] text-muted-foreground/80">
+            Narrative the AI treats as authoritative for growth / margin justification. Cite specific drivers (new product launches, geographic expansion, signed contracts, capex programs) so every projection lever traces to a plan item.
+          </p>
+        </div>
+        <textarea
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder={'e.g. "Q3 2025: launch Atlas migration, enabling enterprise tier and unlocking ~30% Y1 revenue lift. Q4 2025: Singapore office opens, opening APAC channel. 2026: long-dated supply contract with TopMart guarantees 60% of FY2026 revenue."'}
+          rows={6}
+          className="w-full rounded-md border bg-card px-3 py-2 text-sm leading-snug font-mono resize-vertical"
+        />
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={onSave}
+            disabled={saving || !isDirty}
+            className={cn(
+              'inline-flex h-9 items-center gap-1.5 rounded-md border px-3 text-xs font-medium transition-colors',
+              saving || !isDirty
+                ? 'cursor-not-allowed border-border/60 bg-muted/40 text-muted-foreground'
+                : 'cursor-pointer bg-card hover:bg-muted',
+            )}
+          >
+            {saving ? (
+              <><Loader2 className="h-3 w-3 animate-spin" /> Saving…</>
+            ) : !isDirty ? (
+              <><Check className="h-3 w-3" /> Saved</>
+            ) : (
+              <><Save className="h-3 w-3" strokeWidth={2.25} /> Save</>
+            )}
+          </button>
+          <span className="text-[11px] text-muted-foreground/60">
+            {value.trim().length} chars
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
 function PinnedCocosCard({
   cocos,
   draft,
@@ -1303,7 +1500,7 @@ function WorkpaperHeaderCard({
 }) {
   const downloadHref = uploadUrl(xlsxUrl);
   return (
-    <div className="rounded-2xl border bg-card p-4 space-y-3">
+    <div className="space-y-3">
       <div className="flex items-center gap-3">
         <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 ring-1 ring-primary/20">
           <FileSpreadsheet className="h-5 w-5 text-primary" />
