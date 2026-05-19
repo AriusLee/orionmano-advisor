@@ -227,6 +227,7 @@ export default function ReportDetailPage({
   const [editing, setEditing] = useState<string | null>(null);
   const [editContent, setEditContent] = useState("");
   const [exporting, setExporting] = useState(false);
+  const [regenerating, setRegenerating] = useState(false);
   const articleRef = useRef<HTMLElement>(null);
 
   useEffect(() => {
@@ -267,6 +268,45 @@ export default function ReportDetailPage({
       if (r.sections.length > 0) setActiveSection(r.sections[0].section_key);
     });
   }, [id, reportId]);
+
+  // Poll while regenerating so the UI refreshes when the bg task finishes.
+  // Stops as soon as status leaves "pending"/"generating".
+  useEffect(() => {
+    if (!report) return;
+    if (report.status !== "pending" && report.status !== "generating") return;
+    const t = setInterval(async () => {
+      try {
+        const fresh = await apiJson<Report>(`/companies/${id}/reports/${reportId}`);
+        setReport(fresh);
+        if (fresh.status !== "pending" && fresh.status !== "generating") {
+          setRegenerating(false);
+          if (fresh.sections.length > 0 && !activeSection) {
+            setActiveSection(fresh.sections[0].section_key);
+          }
+        }
+      } catch {
+        // ignore transient failures; next tick retries
+      }
+    }, 5000);
+    return () => clearInterval(t);
+  }, [report, id, reportId, activeSection]);
+
+  const handleRegenerate = async () => {
+    if (regenerating) return;
+    setRegenerating(true);
+    try {
+      const fresh = await apiJson<Report>(
+        `/companies/${id}/reports/${reportId}/regenerate`,
+        { method: "POST" }
+      );
+      setReport((prev) => (prev ? { ...prev, ...fresh, sections: [] } : prev));
+      setActiveSection(null);
+      toast.success("Regeneration started — using the latest workpaper.");
+    } catch (err: unknown) {
+      setRegenerating(false);
+      toast.error(err instanceof Error ? err.message : "Regenerate failed");
+    }
+  };
 
   const handleSave = async (sectionKey: string) => {
     try {
@@ -356,28 +396,44 @@ export default function ReportDetailPage({
             </p>
           </div>
         </div>
-        <DropdownMenu>
-          <DropdownMenuTrigger
-            render={
-              <Button variant="outline" className="cursor-pointer gap-2" disabled={exporting} />
-            }
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            className="cursor-pointer gap-2"
+            disabled={regenerating || report.status === "generating" || report.status === "pending"}
+            onClick={handleRegenerate}
+            title="Re-run the written narrative against the latest workpaper. The xlsx is not regenerated."
           >
-            {exporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
-            Export PDF
-            <ChevronDown className="h-3.5 w-3.5 opacity-60" />
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuItem className="cursor-pointer" onClick={() => handleExportPdf("en")}>
-              English
-            </DropdownMenuItem>
-            <DropdownMenuItem className="cursor-pointer" onClick={() => handleExportPdf("zh-CN")}>
-              简体中文
-            </DropdownMenuItem>
-            <DropdownMenuItem className="cursor-pointer" onClick={() => handleExportPdf("ja")}>
-              日本語
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+            {regenerating || report.status === "generating" || report.status === "pending" ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <RefreshCw className="h-4 w-4" />
+            )}
+            Regenerate
+          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger
+              render={
+                <Button variant="outline" className="cursor-pointer gap-2" disabled={exporting} />
+              }
+            >
+              {exporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+              Export PDF
+              <ChevronDown className="h-3.5 w-3.5 opacity-60" />
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem className="cursor-pointer" onClick={() => handleExportPdf("en")}>
+                English
+              </DropdownMenuItem>
+              <DropdownMenuItem className="cursor-pointer" onClick={() => handleExportPdf("zh-CN")}>
+                简体中文
+              </DropdownMenuItem>
+              <DropdownMenuItem className="cursor-pointer" onClick={() => handleExportPdf("ja")}>
+                日本語
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
       </div>
 
       {/* ── Citation-link health (ping-before-deliver gate) ── */}
