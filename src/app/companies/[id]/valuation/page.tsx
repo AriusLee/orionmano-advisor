@@ -72,11 +72,16 @@ const PINNABLE_PARAMS: PinnableParam[] = [
   { key: 'ebit_y0',                     label: 'EBIT Y0',                   type: 'currency', section: 'Projections' },
   { key: 'tax_y0',                      label: 'Tax Y0 (negative)',         type: 'currency', section: 'Projections' },
   { key: 'net_income_y0',               label: 'Net income Y0',             type: 'currency', section: 'Projections' },
-  { key: 'revenue_growth_y1',           label: 'Revenue growth — Y1',        type: 'percent',  section: 'Projections' },
-  { key: 'revenue_growth_y2',           label: 'Revenue growth — Y2',        type: 'percent',  section: 'Projections' },
-  { key: 'revenue_growth_y3',           label: 'Revenue growth — Y3',        type: 'percent',  section: 'Projections' },
-  { key: 'revenue_growth_y4',           label: 'Revenue growth — Y4',        type: 'percent',  section: 'Projections' },
-  { key: 'revenue_growth_y5',           label: 'Revenue growth — Y5',        type: 'percent',  section: 'Projections' },
+  { key: 'revenue_growth_y1',           label: 'Revenue growth (total) — Y1',  type: 'percent',  section: 'Projections' },
+  { key: 'revenue_growth_y2',           label: 'Revenue growth (total) — Y2',  type: 'percent',  section: 'Projections' },
+  { key: 'revenue_growth_y3',           label: 'Revenue growth (total) — Y3',  type: 'percent',  section: 'Projections' },
+  { key: 'revenue_growth_y4',           label: 'Revenue growth (total) — Y4',  type: 'percent',  section: 'Projections' },
+  { key: 'revenue_growth_y5',           label: 'Revenue growth (total) — Y5',  type: 'percent',  section: 'Projections' },
+  { key: 'revenue_growth_primary_y1',   label: 'Revenue growth (primary) — Y1', type: 'percent', section: 'Projections' },
+  { key: 'revenue_growth_primary_y2',   label: 'Revenue growth (primary) — Y2', type: 'percent', section: 'Projections' },
+  { key: 'revenue_growth_primary_y3',   label: 'Revenue growth (primary) — Y3', type: 'percent', section: 'Projections' },
+  { key: 'revenue_growth_primary_y4',   label: 'Revenue growth (primary) — Y4', type: 'percent', section: 'Projections' },
+  { key: 'revenue_growth_primary_y5',   label: 'Revenue growth (primary) — Y5', type: 'percent', section: 'Projections' },
   { key: 'gross_margin_y1',             label: 'Gross margin — Y1',          type: 'percent',  section: 'Projections' },
   { key: 'gross_margin_y2',             label: 'Gross margin — Y2',          type: 'percent',  section: 'Projections' },
   { key: 'gross_margin_y3',             label: 'Gross margin — Y3',          type: 'percent',  section: 'Projections' },
@@ -1542,7 +1547,7 @@ function WorkpaperHeaderCard({
             className="inline-flex h-9 items-center justify-center gap-2 rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground shadow-[0_4px_14px_-4px_oklch(from_var(--primary)_l_c_h_/_0.5),inset_0_1px_0_oklch(1_0_0/0.2)] transition-all duration-150 cursor-pointer hover:brightness-110 active:translate-y-px"
           >
             <Download className="h-3.5 w-3.5" strokeWidth={2.25} />
-            Download xlsx
+            Download
           </a>
         )}
         {reportId && (
