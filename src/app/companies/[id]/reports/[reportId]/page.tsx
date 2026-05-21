@@ -82,6 +82,7 @@ const STATUS_META: Record<string, { label: string; dot: string; text: string; ri
 const REPORT_TYPE_LABEL: Record<string, string> = {
   gap_analysis: "Gap Analysis",
   industry_report: "Industry Expert",
+  industry_drs: "DRS Industry Section",
   dd_report: "Due Diligence",
   valuation_report: "Valuation",
   teaser: "Teaser",
@@ -228,7 +229,27 @@ export default function ReportDetailPage({
   const [editContent, setEditContent] = useState("");
   const [exporting, setExporting] = useState(false);
   const [regenerating, setRegenerating] = useState(false);
+  const [existingDrsId, setExistingDrsId] = useState<string | null>(null);
   const articleRef = useRef<HTMLElement>(null);
+
+  // When viewing an industry_report, look up the most-recent DRS Industry
+  // Section for this company so we can offer "View DRS" instead of forcing a
+  // regen. The list endpoint returns reports newest-first; the first match
+  // is the latest one.
+  useEffect(() => {
+    if (!report || report.report_type !== "industry_report") {
+      setExistingDrsId(null);
+      return;
+    }
+    apiJson<Array<{ id: string; report_type: string; status: string }>>(
+      `/companies/${id}/reports`
+    )
+      .then((rows) => {
+        const drs = rows.find((r) => r.report_type === "industry_drs");
+        setExistingDrsId(drs ? drs.id : null);
+      })
+      .catch(() => setExistingDrsId(null));
+  }, [report, id]);
 
   useEffect(() => {
     if (!activeSection) return;
@@ -236,6 +257,48 @@ export default function ReportDetailPage({
     if (scrollable) scrollable.scrollTo({ top: 0, behavior: "smooth" });
     else window.scrollTo({ top: 0, behavior: "smooth" });
   }, [activeSection]);
+
+  const handleExportDocx = async () => {
+    setExporting(true);
+    try {
+      const token = localStorage.getItem("token");
+      const res = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL}/companies/${id}/reports/${reportId}/docx`,
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      if (!res.ok) {
+        const detail = await res.json().catch(() => null);
+        throw new Error(detail?.detail || "Export failed");
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${report?.title || "report"}.docx`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : "Failed to export DOCX");
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  const handleGenerateDrs = async () => {
+    try {
+      const res = await apiJson<{ id: string }>(
+        `/companies/${id}/reports/generate`,
+        {
+          method: "POST",
+          body: JSON.stringify({ report_type: "industry_drs", tier: "standard" }),
+        }
+      );
+      toast.success("DRS Industry Section generation started.");
+      router.push(`/companies/${id}/reports/${res.id}`);
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : "Failed to start DRS generation");
+    }
+  };
 
   const handleExportPdf = async (lang: "en" | "zh-CN" | "ja" = "en") => {
     setExporting(true);
@@ -397,6 +460,34 @@ export default function ReportDetailPage({
           </div>
         </div>
         <div className="flex items-center gap-2">
+          {report.report_type === "industry_report" && report.status === "draft" && (
+            <>
+              {existingDrsId && (
+                <Button
+                  variant="outline"
+                  className="cursor-pointer gap-2"
+                  onClick={() => router.push(`/companies/${id}/reports/${existingDrsId}`)}
+                  title="Open the most-recent DRS Industry Section generated from this industry report. Use Regenerate on that page to refresh it."
+                >
+                  <FileText className="h-4 w-4" />
+                  View DRS Industry Section
+                </Button>
+              )}
+              <Button
+                variant="outline"
+                className="cursor-pointer gap-2"
+                onClick={handleGenerateDrs}
+                title={
+                  existingDrsId
+                    ? "Create a NEW DRS Industry Section. The existing one stays untouched."
+                    : "Create a Draft Registration Statement (DRS) Industry Section based on this industry report — exports as .docx for the prospectus draft."
+                }
+              >
+                <Sparkles className="h-4 w-4" />
+                {existingDrsId ? "Generate New DRS" : "Generate DRS Industry Section"}
+              </Button>
+            </>
+          )}
           <Button
             variant="outline"
             className="cursor-pointer gap-2"
@@ -411,28 +502,40 @@ export default function ReportDetailPage({
             )}
             Regenerate
           </Button>
-          <DropdownMenu>
-            <DropdownMenuTrigger
-              render={
-                <Button variant="outline" className="cursor-pointer gap-2" disabled={exporting} />
-              }
+          {report.report_type === "industry_drs" ? (
+            <Button
+              variant="outline"
+              className="cursor-pointer gap-2"
+              disabled={exporting}
+              onClick={handleExportDocx}
             >
               {exporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
-              Export PDF
-              <ChevronDown className="h-3.5 w-3.5 opacity-60" />
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem className="cursor-pointer" onClick={() => handleExportPdf("en")}>
-                English
-              </DropdownMenuItem>
-              <DropdownMenuItem className="cursor-pointer" onClick={() => handleExportPdf("zh-CN")}>
-                简体中文
-              </DropdownMenuItem>
-              <DropdownMenuItem className="cursor-pointer" onClick={() => handleExportPdf("ja")}>
-                日本語
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+              Export DOCX
+            </Button>
+          ) : (
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                render={
+                  <Button variant="outline" className="cursor-pointer gap-2" disabled={exporting} />
+                }
+              >
+                {exporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+                Export PDF
+                <ChevronDown className="h-3.5 w-3.5 opacity-60" />
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem className="cursor-pointer" onClick={() => handleExportPdf("en")}>
+                  English
+                </DropdownMenuItem>
+                <DropdownMenuItem className="cursor-pointer" onClick={() => handleExportPdf("zh-CN")}>
+                  简体中文
+                </DropdownMenuItem>
+                <DropdownMenuItem className="cursor-pointer" onClick={() => handleExportPdf("ja")}>
+                  日本語
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
         </div>
       </div>
 
