@@ -842,23 +842,57 @@ function CitationHealthPanel({
   }
 
   // In-flight progress state — heal is running, show live counter.
+  // Eric 2026-05-22 — when the heal loop crashes mid-flight, the snapshot
+  // never flips to in_flight=false and the panel stays stuck forever. Detect
+  // staleness (no progress for >5min) and surface a Restart button.
   if (health.in_flight) {
+    const checkedAtMs = new Date(health.checked_at).getTime();
+    const stale = Number.isFinite(checkedAtMs) && Date.now() - checkedAtMs > 5 * 60 * 1000;
     return (
-      <div className="rounded-2xl border border-blue-500/30 bg-card p-4 flex items-center gap-3">
-        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-blue-500/10 ring-1 ring-blue-500/30">
-          <Loader2 className="h-4 w-4 text-blue-500 animate-spin" strokeWidth={2.25} />
+      <div
+        className={cn(
+          "rounded-2xl border bg-card p-4 flex items-center gap-3",
+          stale ? "border-amber-500/40" : "border-blue-500/30"
+        )}
+      >
+        <div
+          className={cn(
+            "flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ring-1",
+            stale ? "bg-amber-500/10 ring-amber-500/30" : "bg-blue-500/10 ring-blue-500/30"
+          )}
+        >
+          {stale ? (
+            <AlertTriangle className="h-4 w-4 text-amber-500" strokeWidth={2.25} />
+          ) : (
+            <Loader2 className="h-4 w-4 text-blue-500 animate-spin" strokeWidth={2.25} />
+          )}
         </div>
         <div className="flex-1 min-w-0">
           <h2 className="text-sm font-semibold tracking-tight">
-            Generating cited articles — {health.published} of {health.total} ready
+            {stale
+              ? `Citation heal stalled — ${health.published} of ${health.total} ready`
+              : `Generating cited articles — ${health.published} of ${health.total} ready`}
           </h2>
           <p className="text-[11px] text-muted-foreground/80">
-            {health.broken_count} pending / failed · live progress, auto-refreshing every 5s · started {new Date(health.checked_at).toLocaleTimeString()}
+            {stale
+              ? `No progress since ${new Date(health.checked_at).toLocaleTimeString()}. The background worker likely died (LLM rate limit, process restart, or transient error). Click Restart to resume.`
+              : `${health.broken_count} pending / failed · live progress, auto-refreshing every 5s · started ${new Date(health.checked_at).toLocaleTimeString()}`}
           </p>
         </div>
-        <div className="text-[11px] tabular-nums text-muted-foreground/70 shrink-0">
-          {Math.round((health.published / Math.max(1, health.total)) * 100)}%
-        </div>
+        {stale ? (
+          <button
+            type="button"
+            onClick={onRevalidate}
+            className="inline-flex h-9 items-center gap-1.5 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 text-xs font-medium text-amber-600 cursor-pointer hover:bg-amber-500/20"
+          >
+            <RefreshCw className="h-3.5 w-3.5" strokeWidth={2.25} />
+            Restart heal
+          </button>
+        ) : (
+          <div className="text-[11px] tabular-nums text-muted-foreground/70 shrink-0">
+            {Math.round((health.published / Math.max(1, health.total)) * 100)}%
+          </div>
+        )}
       </div>
     );
   }
