@@ -69,6 +69,9 @@ interface Report {
   sections: ReportSection[];
   lint_findings?: LintFinding[] | null;
   citation_health?: CitationHealth | null;
+  // DRS Industry Section chapter preamble (OM Assurance / OM Report
+  // disclosure). Computed server-side, only populated for industry_drs.
+  disclosure_preamble?: string | null;
 }
 
 const STATUS_META: Record<string, { label: string; dot: string; text: string; ring: string }> = {
@@ -611,6 +614,16 @@ export default function ReportDetailPage({
           }
         }}
       />
+
+      {/* ── DRS chapter preamble (Eric 2026-05-24) — italicized, chapter-
+          level disclosure modeled on the Frost & Sullivan opening paragraph
+          of real S-1 industry chapters. Server-computed so the .docx export
+          renders the same string. ── */}
+      {report.disclosure_preamble && (
+        <div className="rounded-2xl border border-border/60 bg-muted/30 px-5 py-4 text-[13px] italic leading-relaxed text-muted-foreground">
+          {report.disclosure_preamble}
+        </div>
+      )}
 
       {/* ── Body ── */}
       <div className="flex gap-6">
