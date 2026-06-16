@@ -18,6 +18,8 @@ import {
   Trash2,
   Download,
   Sparkles,
+  ListChecks,
+  FileStack,
   type LucideIcon,
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
@@ -52,7 +54,7 @@ interface DocumentItem {
   categories?: string[] | null;
 }
 
-type ReportType = 'gap_analysis' | 'industry_report' | 'dd_report' | 'valuation_report';
+type ReportType = 'gap_analysis' | 'industry_report' | 'dd_report' | 'valuation_report' | 'outstanding_items' | 'alternative_report';
 
 interface ReportTypeConfig {
   id: ReportType;
@@ -82,6 +84,8 @@ const REPORT_TYPES: ReportTypeConfig[] = [
   { id: 'industry_report', label: 'Industry Expert', desc: 'Market research & competitive scan', icon: Globe,          accent: 'text-blue-400' },
   { id: 'dd_report',       label: 'Due Diligence',   desc: 'Transaction-grade FDD — QoE bridge, net debt, key findings', icon: FileSearch,     accent: 'text-amber-400' },
   { id: 'valuation_report',label: 'Valuation',       desc: 'DCF workpaper — WACC, comps & sensitivity (Excel)',  icon: BarChart3,      accent: 'text-purple-400', customRoute: '/valuation' },
+  { id: 'outstanding_items', label: 'Outstanding Items', desc: 'Information request — every document & data point still required', icon: ListChecks, accent: 'text-rose-400' },
+  { id: 'alternative_report', label: 'Alternative Report', desc: 'Readiness assessment on available information only — no outstanding list', icon: FileStack, accent: 'text-cyan-400' },
 ];
 
 const REPORT_TYPE_LABELS: Record<string, string> = REPORT_TYPES.reduce((acc, t) => ({ ...acc, [t.id]: t.label }), {});

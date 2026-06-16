@@ -27,6 +27,8 @@ interface Company {
   status: string;
   engagement_type: string | null;
   target_exchange: string | null;
+  fye_annual: string | null;
+  fye_interim: string | null;
   report_tier: string;
   logo_url?: string | null;
 }
@@ -316,6 +318,35 @@ export default function SettingsPage({ params }: { params: Promise<{ id: string 
                   <option key={s} value={s}>{s.replace('_', ' ').toUpperCase()}</option>
                 ))}
               </select>
+            </div>
+          </div>
+
+          <Separator />
+
+          <div className="space-y-3">
+            <div>
+              <Label>Financial Year Ends</Label>
+              <p className="text-xs text-muted-foreground mt-1">
+                Helps the AI align and interpret financial figures across the F-pages and supplemental schedules.
+              </p>
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label>Financial Year End (Annual Audit)</Label>
+                <Input
+                  value={form.fye_annual || ''}
+                  onChange={(e) => update('fye_annual', e.target.value)}
+                  placeholder="e.g. 31 December"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Financial Year End (Interim)</Label>
+                <Input
+                  value={form.fye_interim || ''}
+                  onChange={(e) => update('fye_interim', e.target.value)}
+                  placeholder="e.g. 30 June 2025"
+                />
+              </div>
             </div>
           </div>
 

@@ -92,6 +92,8 @@ const REPORT_TYPE_LABEL: Record<string, string> = {
   company_deck: "Company Deck",
   sales_deck: "Sales Deck",
   kickoff_deck: "Kick-off Deck",
+  outstanding_items: "Outstanding Items",
+  alternative_report: "Alternative Report",
 };
 
 const TIER_LABEL: Record<string, string> = {
