@@ -27,7 +27,7 @@ import {
 import { apiFetch, apiJson } from '@/lib/api';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
-import { Sparkles } from 'lucide-react';
+import { Sparkles, RefreshCw } from 'lucide-react';
 import { DocumentViewerModal } from './document-viewer-modal';
 
 interface Doc {
@@ -81,6 +81,8 @@ export function DocumentChecklist({ companyId, documents, onChanged, companyWebs
   const [uploading, setUploading] = useState(0);
   const [dragOver, setDragOver] = useState(false);
   const [reclassifying, setReclassifying] = useState(false);
+  const [reextractingAll, setReextractingAll] = useState(false);
+  const [reextractingId, setReextractingId] = useState<string | null>(null);
   const [viewerDoc, setViewerDoc] = useState<Doc | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -153,6 +155,35 @@ export function DocumentChecklist({ companyId, documents, onChanged, companyWebs
       URL.revokeObjectURL(url);
     } catch {
       toast.error('Download failed');
+    }
+  };
+
+  const handleReextract = async (docId: string) => {
+    setReextractingId(docId);
+    try {
+      await apiJson(`/companies/${companyId}/documents/${docId}/reextract`, { method: 'POST' });
+      toast.success('Re-extracting…');
+      onChanged();
+    } catch {
+      toast.error('Re-extract failed');
+    } finally {
+      setReextractingId(null);
+    }
+  };
+
+  const handleReextractAll = async () => {
+    setReextractingAll(true);
+    try {
+      const res = await apiJson<{ total: number; queued: number }>(
+        `/companies/${companyId}/documents/reextract-all`,
+        { method: 'POST' },
+      );
+      toast.success(`Re-extracting ${res.queued} document${res.queued === 1 ? '' : 's'}…`);
+      onChanged();
+    } catch {
+      toast.error('Re-extract failed');
+    } finally {
+      setReextractingAll(false);
     }
   };
 
@@ -305,6 +336,20 @@ export function DocumentChecklist({ companyId, documents, onChanged, companyWebs
             </p>
             <div className="flex items-center gap-2">
               <button
+                onClick={handleReextractAll}
+                disabled={reextractingAll}
+                title="Re-run AI extraction on all uploaded documents (use after a parser upgrade)"
+                className={cn(
+                  'inline-flex items-center gap-1 rounded-md border border-border/60 bg-muted/30 px-2 py-0.5 text-[10px] font-medium text-muted-foreground transition-colors',
+                  reextractingAll
+                    ? 'opacity-60 cursor-not-allowed'
+                    : 'cursor-pointer hover:bg-muted/50 hover:text-foreground',
+                )}
+              >
+                <RefreshCw className={cn('h-3 w-3', reextractingAll && 'animate-spin')} />
+                {reextractingAll ? 'Re-extracting…' : 'Re-extract all'}
+              </button>
+              <button
                 onClick={handleReclassify}
                 disabled={reclassifying}
                 className={cn(
@@ -345,6 +390,15 @@ export function DocumentChecklist({ companyId, documents, onChanged, companyWebs
                       Failed
                     </span>
                   )}
+                  <button
+                    onClick={() => handleReextract(doc.id)}
+                    disabled={reextractingId === doc.id}
+                    className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-muted-foreground/50 opacity-0 transition-all cursor-pointer group-hover:opacity-100 hover:bg-primary/10 hover:text-primary disabled:opacity-100 disabled:cursor-not-allowed"
+                    aria-label={`Re-extract ${doc.filename}`}
+                    title="Re-run AI extraction on this document"
+                  >
+                    <RefreshCw className={cn('h-3 w-3', reextractingId === doc.id && 'animate-spin')} />
+                  </button>
                   <button
                     onClick={() => handleDelete(doc.id)}
                     className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-muted-foreground/50 opacity-0 transition-all cursor-pointer group-hover:opacity-100 hover:bg-destructive/10 hover:text-destructive"

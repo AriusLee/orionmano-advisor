@@ -1,6 +1,7 @@
 'use client';
 
 import { use, useEffect, useRef, useState, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
 import { apiFetch, apiJson } from '@/lib/api';
 import { useAuth } from '@/lib/auth-context';
 import { Button } from '@/components/ui/button';
@@ -9,7 +10,8 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
-import { Save, Loader2, UserPlus, Trash2, Building2, Users, Zap, Star, Crown, Check, ImagePlus } from 'lucide-react';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Save, Loader2, UserPlus, Trash2, Building2, Users, Zap, Star, Crown, Check, ImagePlus, AlertTriangle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { CompanyLogo } from '@/components/company-logo';
@@ -88,6 +90,7 @@ const TIER_OPTIONS = [
 export default function SettingsPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const { user } = useAuth();
+  const router = useRouter();
   const [company, setCompany] = useState<Company | null>(null);
   const [form, setForm] = useState<Partial<Company>>({});
   const [saving, setSaving] = useState(false);
@@ -98,6 +101,9 @@ export default function SettingsPage({ params }: { params: Promise<{ id: string 
   const [inviting, setInviting] = useState(false);
   const [uploadingLogo, setUploadingLogo] = useState(false);
   const logoInputRef = useRef<HTMLInputElement>(null);
+  const [showDelete, setShowDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [confirmName, setConfirmName] = useState('');
 
   const loadData = useCallback(() => {
     apiJson<Company>(`/companies/${id}`)
@@ -114,6 +120,18 @@ export default function SettingsPage({ params }: { params: Promise<{ id: string 
   }, [id, user]);
 
   useEffect(() => { loadData(); }, [loadData]);
+
+  const handleDelete = async () => {
+    setDeleting(true);
+    try {
+      await apiFetch(`/companies/${id}`, { method: 'DELETE' });
+      toast.success('Company deleted');
+      router.push('/');
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : 'Delete failed');
+      setDeleting(false);
+    }
+  };
 
   const handleSave = async () => {
     setSaving(true);
@@ -480,6 +498,72 @@ export default function SettingsPage({ params }: { params: Promise<{ id: string 
           </p>
         </CardContent>
       </Card>
+
+      {/* Danger Zone */}
+      <Card className="border-destructive/40">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-destructive">
+            <AlertTriangle className="h-4 w-4" />
+            Danger Zone
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p className="text-sm font-medium">Delete this company</p>
+            <p className="text-xs text-muted-foreground mt-1">
+              Permanently removes the company and all of its documents, reports, decks, and chats. This cannot be undone.
+            </p>
+          </div>
+          <Button
+            variant="destructive"
+            onClick={() => { setConfirmName(''); setShowDelete(true); }}
+            className="cursor-pointer gap-2 shrink-0"
+          >
+            <Trash2 className="h-4 w-4" />
+            Delete Company
+          </Button>
+        </CardContent>
+      </Card>
+
+      <Dialog open={showDelete} onOpenChange={(o) => { if (!deleting) setShowDelete(o); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-destructive">
+              <AlertTriangle className="h-5 w-5" />
+              Delete {company?.name || 'company'}?
+            </DialogTitle>
+            <DialogDescription>
+              This permanently deletes the company and <strong>all</strong> associated documents (including uploaded files),
+              reports, decks, and chats. This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2">
+            <Label>
+              Type <span className="font-mono font-semibold text-foreground">{company?.name}</span> to confirm
+            </Label>
+            <Input
+              value={confirmName}
+              onChange={(e) => setConfirmName(e.target.value)}
+              placeholder={company?.name || ''}
+              autoFocus
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowDelete(false)} disabled={deleting} className="cursor-pointer">
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleDelete}
+              disabled={deleting || confirmName.trim() !== (company?.name || '').trim()}
+              className="cursor-pointer gap-2"
+            >
+              {deleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+              {deleting ? 'Deleting…' : 'Delete Permanently'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
