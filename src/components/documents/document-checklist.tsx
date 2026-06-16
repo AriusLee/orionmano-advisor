@@ -141,6 +141,21 @@ export function DocumentChecklist({ companyId, documents, onChanged, companyWebs
     }
   };
 
+  const handleDownload = async (doc: Doc) => {
+    try {
+      const res = await apiFetch(`/companies/${companyId}/documents/${doc.id}/raw`);
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = doc.filename;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      toast.error('Download failed');
+    }
+  };
+
   const knownIds = useMemo(() => new Set(CATEGORIES.map((c) => c.id)), []);
 
   const { bucketed, other, processing } = useMemo(() => {
@@ -319,9 +334,9 @@ export function DocumentChecklist({ companyId, documents, onChanged, companyWebs
                   <FileIcon className={cn('h-3 w-3 shrink-0', isFailed ? 'text-red-400/70' : 'text-muted-foreground/60')} />
                   <button
                     type="button"
-                    onClick={() => setViewerDoc(doc)}
+                    onClick={() => handleDownload(doc)}
                     className="truncate flex-1 text-left cursor-pointer hover:underline"
-                    title={doc.filename}
+                    title={`Download ${doc.filename}`}
                   >
                     {doc.filename}
                   </button>
