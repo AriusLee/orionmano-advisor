@@ -111,6 +111,44 @@ interface CocoStat {
   n: number;
 }
 
+interface SegmentBreakdown {
+  name: string;
+  source?: string | null;
+  start_year?: number;
+  revenue: number[];
+  gross_profit: number[];
+  cogs: number[];
+  opex: number[];
+  opex_is_allocation?: boolean;
+  growth_basis?: string | null;
+  contractual_support?: string | null;
+}
+
+interface CrossCheckEntry {
+  method: string;
+  implied_ev: number | null;
+  low?: number | null;
+  high?: number | null;
+  variance_pct: number | null;
+  within_range: boolean | null;
+  available: boolean;
+  n?: number;
+}
+
+interface CrossChecks {
+  primary_ev: number;
+  tolerance_pct: number;
+  checks: CrossCheckEntry[];
+  verdict: 'within_reasonable_range' | 'outside_cross_check_range' | 'not_available';
+}
+
+interface ValidationFlag {
+  code: string;
+  severity: string;
+  message: string;
+  data?: Record<string, unknown>;
+}
+
 export interface ValuationSummary {
   engagement: {
     company_name?: string;
@@ -127,6 +165,7 @@ export interface ValuationSummary {
     ebitda: number[];
     fcff: number[];
     ebit: number[];
+    by_segment?: SegmentBreakdown[];
   };
   wacc: { per_management: WaccScenario; independent: WaccScenario };
   dcf: { per_management: DcfResult; independent: DcfResult };
@@ -149,7 +188,11 @@ export interface ValuationSummary {
     base_row: number;
     base_col: number;
   };
-  terminal: { method: string; growth_rate: number };
+  // New blocks (DCF-primary upgrade) — absent on summaries generated before it.
+  concluded?: { basis: string; ev: number; low: number | null; high: number | null };
+  cross_checks?: CrossChecks;
+  validation_flags?: ValidationFlag[];
+  terminal: { method: string; growth_rate: number; nominal_gdp_growth?: number | null };
 }
 
 // ─── Helpers ───
@@ -298,8 +341,16 @@ export function ValuationDashboard({
     ];
   }, [waccPm]);
 
+  const bySegment = summary.projections.by_segment ?? [];
+  const crossChecks = summary.cross_checks;
+  const validationFlags = summary.validation_flags ?? [];
+
   return (
     <div className="space-y-6">
+      {validationFlags.length > 0 && (
+        <ValidationFlagsBanner flags={validationFlags} />
+      )}
+
       {/* Headline stats — primary outputs on row 1, drivers on row 2 */}
       <div className="space-y-3">
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -367,7 +418,7 @@ export function ValuationDashboard({
       <div className="rounded-2xl border bg-card p-5">
         <h3 className="text-sm font-semibold tracking-tight">Football field</h3>
         <p className="text-xs text-muted-foreground mt-0.5">
-          Enterprise value range by methodology · weighted mid {formatCurrency(ff.weighted_mid, unit, currency)}
+          Enterprise value range by methodology · DCF primary — concluded {formatCurrency(summary.concluded?.ev ?? ff.weighted_mid, unit, currency)}
         </p>
         <div className="mt-4 rounded-md border border-border/60 bg-muted/10 p-3">
           {ffData.length === 0 ? (
@@ -375,10 +426,20 @@ export function ValuationDashboard({
               No methodology bands available
             </div>
           ) : (
-            <FootballField rows={ffData} maxX={ffMaxX} weightedMid={ff.weighted_mid} unit={unit} currency={currency} />
+            <FootballField rows={ffData} maxX={ffMaxX} weightedMid={summary.concluded?.ev ?? ff.weighted_mid} unit={unit} currency={currency} />
           )}
         </div>
       </div>
+
+      {/* Cross-checks vs DCF */}
+      {crossChecks && crossChecks.verdict !== 'not_available' && (
+        <CrossCheckCard crossChecks={crossChecks} unit={unit} currency={currency} />
+      )}
+
+      {/* Revenue streams breakdown */}
+      {bySegment.length > 0 && (
+        <RevenueStreamsBreakdown segments={bySegment} unit={unit} currency={currency} gradPrefix={gradPrefix} />
+      )}
 
       {/* EV → Equity bridge — full width */}
       <div className="rounded-2xl border bg-card p-5">
@@ -462,6 +523,7 @@ export function ValuationDashboard({
                 </BarChart>
               </ResponsiveContainer>
             </div>
+            <WaccBuildUpTable pm={waccPm} indep={waccIndep} />
           </div>
         </div>
 
@@ -497,6 +559,258 @@ export function ValuationDashboard({
 }
 
 // ─── Sub-components ───
+
+const CROSS_CHECK_LABELS: Record<string, string> = {
+  market_approach_comps: 'Market approach (comparable companies)',
+  precedent_transactions: 'Recent transactions (precedents)',
+};
+
+function ValidationFlagsBanner({ flags }: { flags: ValidationFlag[] }) {
+  return (
+    <div className="rounded-2xl border border-amber-500/30 bg-amber-500/5 p-4">
+      <div className="flex items-center gap-2 text-amber-500">
+        <AlertTriangle className="h-4 w-4" />
+        <h3 className="text-sm font-semibold">
+          {flags.length} model validation flag{flags.length === 1 ? '' : 's'} — must be disclosed in the report
+        </h3>
+      </div>
+      <ul className="mt-2 space-y-1.5 text-[11px] text-foreground/80">
+        {flags.map((f) => (
+          <li key={f.code} className="flex gap-2">
+            <span className={cn(
+              'shrink-0 mt-px inline-flex items-center rounded px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider',
+              f.severity === 'warning' ? 'bg-amber-500/15 text-amber-500' : 'bg-sky-500/15 text-sky-400',
+            )}>
+              {f.severity}
+            </span>
+            <span>{f.message}</span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+function CrossCheckCard({
+  crossChecks,
+  unit,
+  currency,
+}: {
+  crossChecks: CrossChecks;
+  unit?: string;
+  currency?: string;
+}) {
+  const within = crossChecks.verdict === 'within_reasonable_range';
+  return (
+    <div className="rounded-2xl border bg-card p-5">
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <div>
+          <h3 className="text-sm font-semibold tracking-tight">Cross-checks vs DCF enterprise value</h3>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            DCF is the primary methodology · implied EVs compared within a ±{Math.round(crossChecks.tolerance_pct * 100)}% band
+          </p>
+        </div>
+        <span className={cn(
+          'inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold',
+          within
+            ? 'bg-emerald-500/15 text-emerald-500 ring-1 ring-emerald-500/30'
+            : 'bg-amber-500/15 text-amber-500 ring-1 ring-amber-500/30',
+        )}>
+          {within ? 'Within reasonable range' : 'Outside cross-check range'}
+        </span>
+      </div>
+      <div className="mt-4 rounded-md border border-border/60 bg-muted/10 p-3">
+        <table className="w-full text-[11px] tabular-nums">
+          <thead>
+            <tr className="text-muted-foreground border-b border-border/60">
+              <th className="text-left py-1.5 font-medium">Cross-check</th>
+              <th className="text-right py-1.5 font-medium">Implied EV</th>
+              <th className="text-right py-1.5 font-medium">Variance vs DCF</th>
+              <th className="text-right py-1.5 font-medium">n</th>
+              <th className="text-right py-1.5 font-medium">Assessment</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr className="border-b border-border/30 font-semibold">
+              <td className="py-1.5">DCF enterprise value (primary)</td>
+              <td className="text-right">{formatCurrency(crossChecks.primary_ev, unit, currency)}</td>
+              <td className="text-right text-muted-foreground">—</td>
+              <td className="text-right text-muted-foreground">—</td>
+              <td className="text-right text-muted-foreground">Primary</td>
+            </tr>
+            {crossChecks.checks.map((c) => (
+              <tr key={c.method} className="border-b border-border/30">
+                <td className="py-1.5 text-foreground">{CROSS_CHECK_LABELS[c.method] ?? c.method}</td>
+                <td className="text-right">
+                  {c.available && c.implied_ev != null ? formatCurrency(c.implied_ev, unit, currency) : '—'}
+                </td>
+                <td className={cn(
+                  'text-right font-medium',
+                  c.within_range === true && 'text-emerald-500',
+                  c.within_range === false && 'text-amber-500',
+                )}>
+                  {c.variance_pct != null ? `${c.variance_pct >= 0 ? '+' : ''}${(c.variance_pct * 100).toFixed(1)}%` : 'n/a'}
+                </td>
+                <td className="text-right text-muted-foreground">{c.n ?? '—'}</td>
+                <td className={cn(
+                  'text-right',
+                  c.within_range === true && 'text-emerald-500',
+                  c.within_range === false && 'text-amber-500',
+                  !c.available && 'text-muted-foreground',
+                )}>
+                  {!c.available ? 'Not available' : c.within_range ? 'Within ±10%' : 'Outside ±10%'}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function RevenueStreamsBreakdown({
+  segments,
+  unit,
+  currency,
+  gradPrefix,
+}: {
+  segments: SegmentBreakdown[];
+  unit?: string;
+  currency?: string;
+  gradPrefix: string;
+}) {
+  const years = segments[0]?.revenue.length ?? 0;
+  const chartData = useMemo(() =>
+    Array.from({ length: years }, (_, y) => {
+      const row: Record<string, number | string> = { year: y === 0 ? 'Y0' : `Y${y}` };
+      for (const s of segments) row[s.name] = s.revenue[y] ?? 0;
+      return row;
+    }), [segments, years]);
+
+  return (
+    <div className="rounded-2xl border bg-card p-5">
+      <h3 className="text-sm font-semibold tracking-tight">Revenue by stream</h3>
+      <p className="text-xs text-muted-foreground mt-0.5">
+        Per-stream revenue with incremental COGS and related opex — additional streams marked ★
+      </p>
+      <div className="mt-4 grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <div className="rounded-md border border-border/60 bg-muted/10 p-3">
+          <div className="h-64 w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={chartData} margin={{ top: 5, right: 12, left: 5, bottom: 5 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke={GRID_STROKE} />
+                <XAxis dataKey="year" tick={AXIS_TICK} />
+                <YAxis tick={AXIS_TICK} tickFormatter={(v) => formatCurrency(Number(v), unit, currency)} width={64} />
+                <Tooltip
+                  contentStyle={TT}
+                  labelStyle={TT_LABEL}
+                  itemStyle={TT_ITEM}
+                  cursor={{ fill: 'oklch(0.40 0.01 260 / 0.15)' }}
+                  formatter={(v) => formatCurrency(Number(v), unit, currency)}
+                />
+                {segments.map((s, i) => (
+                  <Bar key={s.name} dataKey={s.name} stackId="rev" fill={COLORS[i % COLORS.length]} />
+                ))}
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+          <div className="flex items-center gap-4 mt-2 text-[11px] text-muted-foreground flex-wrap">
+            {segments.map((s, i) => (
+              <LegendDot key={s.name} color={COLORS[i % COLORS.length]} label={s.name} />
+            ))}
+          </div>
+        </div>
+        <div className="rounded-md border border-border/60 bg-muted/10 p-3 overflow-x-auto">
+          <table className="w-full text-[11px] tabular-nums">
+            <thead>
+              <tr className="text-muted-foreground border-b border-border/60">
+                <th className="text-left py-1.5 font-medium">Line item</th>
+                {Array.from({ length: Math.max(0, years - 1) }, (_, y) => (
+                  <th key={y} className="text-right py-1.5 font-medium">Y{y + 1}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {segments.map((s) => {
+                const isStream = s.source === 'additional_stream';
+                return [
+                  <tr key={`${s.name}-rev`} className="border-b border-border/30 font-medium">
+                    <td className="py-1.5 text-foreground">
+                      {isStream ? '★ ' : ''}Revenue — {s.name}
+                    </td>
+                    {s.revenue.slice(1).map((v, y) => (
+                      <td key={y} className="text-right">{formatCurrency(v, unit, currency)}</td>
+                    ))}
+                  </tr>,
+                  <tr key={`${s.name}-cogs`} className="border-b border-border/30 text-muted-foreground">
+                    <td className="py-1 pl-4">COGS — {s.name}</td>
+                    {s.cogs.map((v, y) => (
+                      <td key={y} className="text-right">{formatCurrency(v, unit, currency)}</td>
+                    ))}
+                  </tr>,
+                  <tr key={`${s.name}-opex`} className="border-b border-border/30 text-muted-foreground">
+                    <td className="py-1 pl-4">
+                      Related opex — {s.name}
+                      {s.opex_is_allocation ? ' (allocated)' : ''}
+                    </td>
+                    {s.opex.map((v, y) => (
+                      <td key={y} className="text-right">{formatCurrency(v, unit, currency)}</td>
+                    ))}
+                  </tr>,
+                ];
+              })}
+            </tbody>
+          </table>
+          {segments.some((s) => s.growth_basis) && (
+            <div className="mt-3 space-y-1 border-t border-border/40 pt-2">
+              {segments.filter((s) => s.growth_basis).map((s) => (
+                <p key={s.name} className="text-[10px] text-muted-foreground/80">
+                  <span className="font-medium text-muted-foreground">{s.name}:</span> {s.growth_basis}
+                </p>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function WaccBuildUpTable({ pm, indep }: { pm: WaccScenario; indep: WaccScenario }) {
+  const rows: { label: string; pm: number; indep: number; bold?: boolean }[] = [
+    { label: 'Risk-free rate', pm: pm.components.risk_free_rate, indep: indep.components.risk_free_rate },
+    { label: 'Levered β × ERP', pm: pm.levered_beta * pm.components.equity_risk_premium, indep: indep.levered_beta * indep.components.equity_risk_premium },
+    { label: 'Country risk premium', pm: pm.components.country_risk_premium, indep: indep.components.country_risk_premium },
+    { label: 'Size premium', pm: pm.components.size_premium, indep: indep.components.size_premium },
+    { label: 'Company-specific risk premium', pm: pm.components.specific_risk_premium, indep: indep.components.specific_risk_premium },
+    { label: 'Cost of equity (Ke)', pm: pm.cost_of_equity, indep: indep.cost_of_equity, bold: true },
+    { label: 'After-tax cost of debt', pm: pm.aftertax_cost_of_debt, indep: indep.aftertax_cost_of_debt },
+    { label: 'WACC', pm: pm.wacc, indep: indep.wacc, bold: true },
+  ];
+  return (
+    <div className="mt-3 border-t border-border/40 pt-2">
+      <table className="w-full text-[11px] tabular-nums">
+        <thead>
+          <tr className="text-muted-foreground border-b border-border/60">
+            <th className="text-left py-1 font-medium">Component</th>
+            <th className="text-right py-1 font-medium">Per-Mgmt</th>
+            <th className="text-right py-1 font-medium">Independent</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r) => (
+            <tr key={r.label} className={cn('border-b border-border/20', r.bold && 'font-semibold')}>
+              <td className={cn('py-1', r.bold ? 'text-foreground' : 'text-muted-foreground')}>{r.label}</td>
+              <td className="text-right">{formatPct(r.pm)}</td>
+              <td className="text-right">{formatPct(r.indep)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
 
 function LegendDot({ color, label }: { color: string; label: string }) {
   return (
@@ -620,7 +934,7 @@ function FootballField({
             fontSize={10}
             fontWeight={600}
           >
-            Weighted: {formatCurrency(weightedMid, unit, currency)}
+            Concluded (DCF): {formatCurrency(weightedMid, unit, currency)}
           </text>
         </g>
       )}

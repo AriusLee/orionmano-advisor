@@ -43,6 +43,34 @@ interface CompanyMeta {
   pinned_overrides: Record<string, number | null> | null;
   pinned_cocos: Record<string, { include?: boolean; selected_for_wacc?: boolean }> | null;
   business_development_plan: string | null;
+  additional_revenue_streams: RevenueStreamWire[] | null;
+}
+
+// Wire format of Company.additional_revenue_streams (backend JSONB). Percent
+// fields are decimals on the wire (0.25 = 25%), same convention as pinned
+// overrides; base_year_revenue is in ACTUAL currency units like target_valuation.
+interface RevenueStreamWire {
+  name: string;
+  description?: string | null;
+  base_year_revenue: number;
+  start_year?: number | null;
+  growth_override?: number | null;
+  gross_margin_override?: number | null;
+  opex_pct_override?: number | null;
+  contractual_support?: string | null;
+}
+
+// Editable row state for the streams list editor (string-valued for inputs;
+// percent fields displayed ×100).
+interface RevenueStreamDraft {
+  name: string;
+  description: string;
+  base_year_revenue: string;
+  start_year: string;
+  growth_override: string;
+  gross_margin_override: string;
+  opex_pct_override: string;
+  contractual_support: string;
 }
 
 interface CocoSummary {
@@ -88,6 +116,7 @@ const PINNABLE_PARAMS: PinnableParam[] = [
   { key: 'gross_margin_y4',             label: 'Gross margin — Y4',          type: 'percent',  section: 'Projections' },
   { key: 'gross_margin_y5',             label: 'Gross margin — Y5',          type: 'percent',  section: 'Projections' },
   { key: 'terminal_growth_rate',        label: 'Terminal growth rate',       type: 'percent',  section: 'Terminal' },
+  { key: 'nominal_gdp_growth',          label: 'Nominal GDP growth (terminal ceiling)', type: 'percent', section: 'Terminal' },
   { key: 'risk_free_rate',              label: 'Risk-free rate',             type: 'percent',  section: 'WACC' },
   { key: 'equity_risk_premium',         label: 'Equity risk premium',        type: 'percent',  section: 'WACC' },
   { key: 'country_risk_premium',        label: 'Country risk premium',       type: 'percent',  section: 'WACC' },
@@ -171,6 +200,12 @@ export default function ValuationPage({ params }: { params: Promise<{ id: string
   const [savedBdp, setSavedBdp] = useState<string>('');
   const [savingBdp, setSavingBdp] = useState(false);
   const bdpInitializedRef = useRef(false);
+  // Additional revenue streams — user-defined streams the producer maps onto
+  // projections.segments (AI web-researches growth when no override is set).
+  const [streamsDraft, setStreamsDraft] = useState<RevenueStreamDraft[]>([]);
+  const [savedStreams, setSavedStreams] = useState<RevenueStreamWire[]>([]);
+  const [savingStreams, setSavingStreams] = useState(false);
+  const streamsInitializedRef = useRef(false);
   const autoRegenFiredRef = useRef(false);
 
   // Prefill the run-config input. Precedence: Company.target_valuation (saved
@@ -410,6 +445,28 @@ export default function ValuationPage({ params }: { params: Promise<{ id: string
     }
   }, [id, pinnedDrafts, savingPinned]);
 
+  const handleSaveStreams = useCallback(async () => {
+    if (savingStreams) return;
+    setSavingStreams(true);
+    try {
+      const wire = streamsToWire(streamsDraft);
+      const updated = await apiJson<CompanyMeta>(`/companies/${id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ additional_revenue_streams: wire }),
+      });
+      setSavedStreams(updated.additional_revenue_streams ?? []);
+      toast.success(
+        wire.length === 0
+          ? 'Additional revenue streams cleared'
+          : `Saved ${wire.length} revenue stream${wire.length === 1 ? '' : 's'}`
+      );
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : 'Save failed');
+    } finally {
+      setSavingStreams(false);
+    }
+  }, [id, streamsDraft, savingStreams]);
+
   const handleSaveValuationDate = useCallback(async () => {
     if (savingValuationDate) return;
     setSavingValuationDate(true);
@@ -513,6 +570,12 @@ export default function ValuationPage({ params }: { params: Promise<{ id: string
         if (!bdpInitializedRef.current) {
           setBdpDraft(bdp);
           bdpInitializedRef.current = true;
+        }
+        const streams = Array.isArray(c.additional_revenue_streams) ? c.additional_revenue_streams : [];
+        setSavedStreams(streams);
+        if (!streamsInitializedRef.current) {
+          setStreamsDraft(streams.map(streamToDraft));
+          streamsInitializedRef.current = true;
         }
         if (l && l.summary) setLatest(l as LatestSummary);
       })
@@ -654,6 +717,22 @@ export default function ValuationPage({ params }: { params: Promise<{ id: string
         savedValuationDate={savedValuationDate}
         onSaveValuationDate={handleSaveValuationDate}
         savingValuationDate={savingValuationDate}
+      />
+
+      <RiskPremiumCard
+        pinnedDrafts={pinnedDrafts}
+        onChangePinned={setPinnedDrafts}
+        savedOverrides={savedPinnedOverrides}
+        onSave={handleSavePinned}
+        saving={savingPinned}
+      />
+
+      <RevenueStreamsCard
+        drafts={streamsDraft}
+        onChange={setStreamsDraft}
+        savedStreams={savedStreams}
+        onSave={handleSaveStreams}
+        saving={savingStreams}
       />
 
       <PinnedParamsCard
@@ -1330,6 +1409,306 @@ function PinnedCocosCard({
           <span className="text-[11px] text-muted-foreground/70">
             Selecting for WACC implies include.
           </span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
+// ── Additional revenue streams ──────────────────────────────────────────────
+
+function streamToDraft(s: RevenueStreamWire): RevenueStreamDraft {
+  const pct = (v: number | null | undefined) => (v == null ? '' : String(v * 100));
+  return {
+    name: s.name ?? '',
+    description: s.description ?? '',
+    base_year_revenue: s.base_year_revenue != null ? String(s.base_year_revenue) : '',
+    start_year: s.start_year != null ? String(s.start_year) : '1',
+    growth_override: pct(s.growth_override),
+    gross_margin_override: pct(s.gross_margin_override),
+    opex_pct_override: pct(s.opex_pct_override),
+    contractual_support: s.contractual_support ?? '',
+  };
+}
+
+function streamsToWire(drafts: RevenueStreamDraft[]): RevenueStreamWire[] {
+  const out: RevenueStreamWire[] = [];
+  for (const d of drafts) {
+    const name = d.name.trim();
+    const base = Number(d.base_year_revenue);
+    if (!name || !Number.isFinite(base) || base <= 0) continue;
+    const pct = (raw: string): number | null => {
+      if (!raw.trim()) return null;
+      const n = Number(raw);
+      return Number.isFinite(n) ? n / 100 : null;
+    };
+    const startRaw = Number(d.start_year);
+    out.push({
+      name,
+      description: d.description.trim() || null,
+      base_year_revenue: base,
+      start_year: Number.isFinite(startRaw) && startRaw >= 0 ? Math.floor(startRaw) : 1,
+      growth_override: pct(d.growth_override),
+      gross_margin_override: pct(d.gross_margin_override),
+      opex_pct_override: pct(d.opex_pct_override),
+      contractual_support: d.contractual_support.trim() || null,
+    });
+  }
+  return out;
+}
+
+const EMPTY_STREAM_DRAFT: RevenueStreamDraft = {
+  name: '',
+  description: '',
+  base_year_revenue: '',
+  start_year: '1',
+  growth_override: '',
+  gross_margin_override: '',
+  opex_pct_override: '',
+  contractual_support: '',
+};
+
+function RevenueStreamsCard({
+  drafts,
+  onChange,
+  savedStreams,
+  onSave,
+  saving,
+}: {
+  drafts: RevenueStreamDraft[];
+  onChange: (next: RevenueStreamDraft[]) => void;
+  savedStreams: RevenueStreamWire[];
+  onSave: () => void;
+  saving: boolean;
+}) {
+  const isDirty = JSON.stringify(streamsToWire(drafts)) !== JSON.stringify(streamsToWire(savedStreams.map(streamToDraft)));
+  const addRow = () => onChange([...drafts, { ...EMPTY_STREAM_DRAFT }]);
+  const updateRow = (idx: number, patch: Partial<RevenueStreamDraft>) => {
+    onChange(drafts.map((r, i) => (i === idx ? { ...r, ...patch } : r)));
+  };
+  const removeRow = (idx: number) => onChange(drafts.filter((_, i) => i !== idx));
+
+  return (
+    <div className="rounded-2xl border bg-card p-4 flex items-start gap-4">
+      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 ring-1 ring-primary/20 mt-0.5">
+        <Sparkles className="h-4 w-4 text-primary" strokeWidth={2.25} />
+      </div>
+      <div className="flex-1 min-w-0 space-y-3">
+        <div>
+          <h2 className="text-sm font-semibold tracking-tight">Additional revenue streams</h2>
+          <p className="text-[11px] text-muted-foreground/80">
+            User-defined streams added to the DCF projections. Leave the growth override blank and the AI
+            researches an appropriate market growth rate (industry reports, sector statistics) at generation
+            time. COGS and related opex scale with each stream and are broken down per stream in the outputs.
+          </p>
+        </div>
+
+        {drafts.length === 0 && (
+          <p className="text-[11px] text-muted-foreground/60 italic">
+            No additional revenue streams. Add one to layer a new revenue line into the DCF.
+          </p>
+        )}
+
+        <div className="space-y-3">
+          {drafts.map((row, idx) => (
+            <div key={idx} className="rounded-lg border bg-muted/20 p-3 space-y-2">
+              <div className="flex items-center gap-2 flex-wrap">
+                <Input
+                  placeholder="Stream name (e.g. EV charging services)"
+                  value={row.name}
+                  onChange={(e) => updateRow(idx, { name: e.target.value })}
+                  className="h-9 w-72 text-sm"
+                />
+                <Input
+                  type="number"
+                  inputMode="decimal"
+                  step="any"
+                  placeholder="Base-year revenue (actual currency)"
+                  value={row.base_year_revenue}
+                  onChange={(e) => updateRow(idx, { base_year_revenue: e.target.value })}
+                  className="h-9 w-64 text-sm tabular-nums"
+                />
+                <div className="flex items-center gap-1.5">
+                  <Label className="text-[11px] text-muted-foreground/70">Starts</Label>
+                  <select
+                    value={row.start_year}
+                    onChange={(e) => updateRow(idx, { start_year: e.target.value })}
+                    className="h-9 rounded-md border bg-card px-2 text-xs cursor-pointer"
+                  >
+                    {['0', '1', '2', '3', '4', '5'].map((y) => (
+                      <option key={y} value={y}>{y === '0' ? 'Y0 (existing)' : `Y${y}`}</option>
+                    ))}
+                  </select>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => removeRow(idx)}
+                  title="Remove this stream"
+                  className="ml-auto inline-flex h-9 w-9 items-center justify-center rounded-md border bg-card text-muted-foreground transition-colors cursor-pointer hover:bg-muted hover:text-foreground"
+                >
+                  ×
+                </button>
+              </div>
+              <Input
+                placeholder="Description — what this stream is, who buys it (used in the report narrative)"
+                value={row.description}
+                onChange={(e) => updateRow(idx, { description: e.target.value })}
+                className="h-9 text-sm"
+              />
+              <div className="flex items-center gap-3 flex-wrap">
+                {([
+                  ['growth_override', 'Growth override %', 'blank = AI researches market growth'],
+                  ['gross_margin_override', 'Gross margin %', 'blank = AI estimates'],
+                  ['opex_pct_override', 'Related opex %', 'S&M/distribution as % of stream revenue'],
+                ] as const).map(([key, label, hint]) => (
+                  <div key={key} className="flex items-center gap-1.5">
+                    <Label className="text-[11px] text-muted-foreground/70 whitespace-nowrap" title={hint}>{label}</Label>
+                    <Input
+                      type="number"
+                      inputMode="decimal"
+                      step="any"
+                      placeholder="—"
+                      value={row[key]}
+                      onChange={(e) => updateRow(idx, { [key]: e.target.value })}
+                      className="h-9 w-24 text-sm tabular-nums"
+                    />
+                  </div>
+                ))}
+              </div>
+              <Input
+                placeholder="Contractual support (signed contracts, backlog, MOUs) — blank flags the stream as unproven"
+                value={row.contractual_support}
+                onChange={(e) => updateRow(idx, { contractual_support: e.target.value })}
+                className="h-9 text-sm"
+              />
+            </div>
+          ))}
+        </div>
+
+        <div className="flex items-center gap-2 pt-1">
+          <button
+            type="button"
+            onClick={addRow}
+            className="inline-flex h-9 items-center gap-1.5 rounded-md border bg-card px-3 text-xs font-medium transition-colors cursor-pointer hover:bg-muted"
+          >
+            + Add revenue stream
+          </button>
+          <button
+            type="button"
+            onClick={onSave}
+            disabled={saving || !isDirty}
+            className={cn(
+              'inline-flex h-9 items-center gap-1.5 rounded-md border px-3 text-xs font-medium transition-colors',
+              saving || !isDirty
+                ? 'cursor-not-allowed border-border/60 bg-muted/40 text-muted-foreground'
+                : 'cursor-pointer bg-card hover:bg-muted',
+            )}
+          >
+            {saving ? (
+              <><Loader2 className="h-3 w-3 animate-spin" /> Saving…</>
+            ) : !isDirty ? (
+              <><Check className="h-3 w-3" /> Saved</>
+            ) : (
+              <><Save className="h-3 w-3" strokeWidth={2.25} /> Save</>
+            )}
+          </button>
+          <p className="text-[10px] text-muted-foreground/60">
+            Changes apply on the next Generate/Regenerate run.
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
+// ── Company-specific risk premium ───────────────────────────────────────────
+// Dedicated, always-visible shortcut to the `specific_risk_premium_pm` pinned
+// parameter — reads and writes the SAME pinnedDrafts state as PinnedParamsCard
+// so the two views can never diverge.
+
+const RISK_PREMIUM_KEY = 'specific_risk_premium_pm';
+
+function RiskPremiumCard({
+  pinnedDrafts,
+  onChangePinned,
+  savedOverrides,
+  onSave,
+  saving,
+}: {
+  pinnedDrafts: Array<{ key: string; value: string }>;
+  onChangePinned: (next: Array<{ key: string; value: string }>) => void;
+  savedOverrides: Record<string, number | null>;
+  onSave: () => void;
+  saving: boolean;
+}) {
+  const row = pinnedDrafts.find((r) => r.key === RISK_PREMIUM_KEY);
+  const value = row?.value ?? '';
+  const savedRaw = savedOverrides[RISK_PREMIUM_KEY];
+  const savedDisplay = savedRaw != null ? savedRaw * 100 : null;
+  const draftNum = value.trim() ? Number(value) : null;
+  const isDirty =
+    (draftNum == null) !== (savedDisplay == null) ||
+    (draftNum != null && savedDisplay != null && Math.abs(draftNum - savedDisplay) > 1e-9);
+
+  const setValue = (v: string) => {
+    if (row) {
+      onChangePinned(pinnedDrafts.map((r) => (r.key === RISK_PREMIUM_KEY ? { ...r, value: v } : r)));
+    } else {
+      onChangePinned([...pinnedDrafts, { key: RISK_PREMIUM_KEY, value: v }]);
+    }
+  };
+
+  return (
+    <div className="rounded-2xl border bg-card p-4 flex items-start gap-4">
+      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 ring-1 ring-primary/20 mt-0.5">
+        <AlertTriangle className="h-4 w-4 text-primary" strokeWidth={2.25} />
+      </div>
+      <div className="flex-1 min-w-0 space-y-3">
+        <div>
+          <h2 className="text-sm font-semibold tracking-tight">Company-Specific Risk Premium (%)</h2>
+          <p className="text-[11px] text-muted-foreground/80">
+            Feeds the WACC cost of equity on top of base CAPM (Rf + β×ERP), country risk and size premium —
+            a higher premium raises the discount rate and lowers the enterprise value. The WACC build-up
+            in the workpaper and report shows how it combines with the other components.
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <Input
+            type="number"
+            inputMode="decimal"
+            step="any"
+            placeholder="e.g. 2.5"
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
+            className="h-9 w-32 text-sm tabular-nums"
+          />
+          <span className="text-[11px] text-muted-foreground/70 font-mono">%</span>
+          <button
+            type="button"
+            onClick={onSave}
+            disabled={saving || !isDirty}
+            className={cn(
+              'inline-flex h-9 items-center gap-1.5 rounded-md border px-3 text-xs font-medium transition-colors',
+              saving || !isDirty
+                ? 'cursor-not-allowed border-border/60 bg-muted/40 text-muted-foreground'
+                : 'cursor-pointer bg-card hover:bg-muted',
+            )}
+          >
+            {saving ? (
+              <><Loader2 className="h-3 w-3 animate-spin" /> Saving…</>
+            ) : !isDirty ? (
+              <><Check className="h-3 w-3" /> Saved</>
+            ) : (
+              <><Save className="h-3 w-3" strokeWidth={2.25} /> Save</>
+            )}
+          </button>
+          {savedDisplay != null && (
+            <p className="text-[10px] text-muted-foreground/60">
+              Pinned at {savedDisplay.toFixed(2)}% — the producer preserves this verbatim across regenerates.
+            </p>
+          )}
         </div>
       </div>
     </div>
