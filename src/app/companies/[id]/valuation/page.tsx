@@ -40,6 +40,7 @@ interface CompanyMeta {
   report_tier: string;
   target_valuation: number | null;
   target_valuation_basis: string | null;
+  presentation_currency: string | null;
   valuation_date: string | null;
   pinned_overrides: Record<string, number | null> | null;
   pinned_cocos: Record<string, { include?: boolean; selected_for_wacc?: boolean }> | null;
@@ -182,6 +183,10 @@ export default function ValuationPage({ params }: { params: Promise<{ id: string
   // (after the EV-to-equity bridge + DLOM/DLOC). Saved with the target.
   const [targetBasis, setTargetBasis] = useState<string>('enterprise_value');
   const [savedTargetBasis, setSavedTargetBasis] = useState<string>('enterprise_value');
+  // Deliverable presentation currency — source docs may be in another
+  // currency; the producer converts at a cited FX rate. '' = Auto (AI infers).
+  const [presentationCurrency, setPresentationCurrency] = useState<string>('USD');
+  const [savedPresentationCurrency, setSavedPresentationCurrency] = useState<string>('USD');
   const [savingTarget, setSavingTarget] = useState(false);
   // Eric 2026-05-08 item 6 — per-run valuation date. Defaults to today; the
   // prefill effect overwrites it with the most recent run's date if present.
@@ -352,17 +357,22 @@ export default function ValuationPage({ params }: { params: Promise<{ id: string
       const tv = targetValuation.trim() ? Number(targetValuation) : null;
       const updated = await apiJson<CompanyMeta>(`/companies/${id}`, {
         method: 'PATCH',
-        body: JSON.stringify({ target_valuation: tv, target_valuation_basis: targetBasis }),
+        body: JSON.stringify({
+          target_valuation: tv,
+          target_valuation_basis: targetBasis,
+          presentation_currency: presentationCurrency || null,
+        }),
       });
       setSavedTargetValuation(updated.target_valuation ?? null);
       setSavedTargetBasis(updated.target_valuation_basis ?? 'enterprise_value');
+      setSavedPresentationCurrency(updated.presentation_currency ?? '');
       toast.success(tv == null ? 'Target valuation cleared' : 'Target valuation saved');
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : 'Save failed');
     } finally {
       setSavingTarget(false);
     }
-  }, [id, savingTarget, targetValuation, targetBasis]);
+  }, [id, savingTarget, targetValuation, targetBasis, presentationCurrency]);
 
   // Seed pinned-cocos draft from the latest run's cocos + saved overrides
   // once both are loaded. After that, the draft is user-controlled.
@@ -556,6 +566,9 @@ export default function ValuationPage({ params }: { params: Promise<{ id: string
         const basis = c.target_valuation_basis ?? 'enterprise_value';
         setSavedTargetBasis(basis);
         setTargetBasis(basis);
+        const pcur = c.presentation_currency ?? '';
+        setSavedPresentationCurrency(pcur);
+        setPresentationCurrency(pcur);
         setSavedValuationDate(c.valuation_date ?? null);
         const pinned = c.pinned_overrides ?? {};
         setSavedPinnedOverrides(pinned);
@@ -716,6 +729,9 @@ export default function ValuationPage({ params }: { params: Promise<{ id: string
         targetBasis={targetBasis}
         onBasisChange={setTargetBasis}
         savedBasis={savedTargetBasis}
+        presentationCurrency={presentationCurrency}
+        onCurrencyChange={setPresentationCurrency}
+        savedCurrency={savedPresentationCurrency}
         valuationDate={valuationDate}
         onValuationDateChange={setValuationDate}
         currencyLabel={
@@ -740,6 +756,7 @@ export default function ValuationPage({ params }: { params: Promise<{ id: string
       />
 
       <RevenueStreamsCard
+        currency={presentationCurrency || 'USD'}
         drafts={streamsDraft}
         onChange={setStreamsDraft}
         savedStreams={savedStreams}
@@ -748,6 +765,7 @@ export default function ValuationPage({ params }: { params: Promise<{ id: string
       />
 
       <PinnedParamsCard
+        currency={presentationCurrency || 'USD'}
         drafts={pinnedDrafts}
         onChange={setPinnedDrafts}
         savedOverrides={savedPinnedOverrides}
@@ -1005,12 +1023,17 @@ function AssumptionsPanel({
 }
 
 
+const PRESENTATION_CURRENCIES = ['USD', 'SGD', 'MYR', 'HKD', 'CNY', 'EUR', 'GBP', 'JPY', 'AUD'];
+
 function RunConfigCard({
   targetValuation,
   onChange,
   targetBasis,
   onBasisChange,
   savedBasis,
+  presentationCurrency,
+  onCurrencyChange,
+  savedCurrency,
   valuationDate,
   onValuationDateChange,
   currencyLabel,
@@ -1026,6 +1049,9 @@ function RunConfigCard({
   targetBasis: string;
   onBasisChange: (v: string) => void;
   savedBasis: string;
+  presentationCurrency: string;
+  onCurrencyChange: (v: string) => void;
+  savedCurrency: string;
   valuationDate: string;
   onValuationDateChange: (v: string) => void;
   currencyLabel: string;
@@ -1036,17 +1062,18 @@ function RunConfigCard({
   onSaveValuationDate: () => void;
   savingValuationDate: boolean;
 }) {
-  // currencyLabel may arrive as "USD '000" — strip the unit suffix for the
-  // target_valuation display because the input is ACTUAL currency, not
-  // unit-scaled. The runtime stored value matches the typed number 1:1.
-  const currencyCode = (currencyLabel.match(/^(\S+)/)?.[1]) || currencyLabel;
+  // The chosen presentation currency wins for display; fall back to the
+  // latest run's currency label when set to Auto. Target input is ACTUAL
+  // currency (not unit-scaled) — the stored value matches the typed number 1:1.
+  const currencyCode = presentationCurrency || (currencyLabel.match(/^(\S+)/)?.[1]) || currencyLabel;
   const preview = formatTargetPreview(targetValuation, currencyCode);
   const trimmed = targetValuation.trim();
   const currentNumeric = trimmed ? Number(trimmed) : null;
   const isDirty =
     (currentNumeric === null && savedValue !== null) ||
     (currentNumeric !== null && currentNumeric !== savedValue) ||
-    targetBasis !== savedBasis;
+    targetBasis !== savedBasis ||
+    presentationCurrency !== savedCurrency;
   const trimmedDate = valuationDate.trim();
   const currentDate = trimmedDate && /^\d{4}-\d{2}-\d{2}$/.test(trimmedDate) ? trimmedDate : null;
   const savedDateNormalized = savedValuationDate ? savedValuationDate.slice(0, 10) : null;
@@ -1082,7 +1109,17 @@ function RunConfigCard({
             onChange={(e) => onChange(e.target.value)}
             className="h-9 w-52 text-sm tabular-nums"
           />
-          <span className="text-[11px] text-muted-foreground/80 font-mono whitespace-nowrap">{currencyCode}</span>
+          <select
+            value={presentationCurrency}
+            onChange={(e) => onCurrencyChange(e.target.value)}
+            title="Presentation currency of the workpaper and report — source documents in another currency are converted at a cited valuation-date FX rate"
+            className="h-9 rounded-md border bg-card px-2 text-xs cursor-pointer font-mono"
+          >
+            {PRESENTATION_CURRENCIES.map((c) => (
+              <option key={c} value={c}>{c}</option>
+            ))}
+            <option value="">Auto (from docs)</option>
+          </select>
           <select
             value={targetBasis}
             onChange={(e) => onBasisChange(e.target.value)}
@@ -1498,12 +1535,14 @@ const EMPTY_STREAM_DRAFT: RevenueStreamDraft = {
 };
 
 function RevenueStreamsCard({
+  currency,
   drafts,
   onChange,
   savedStreams,
   onSave,
   saving,
 }: {
+  currency: string;
   drafts: RevenueStreamDraft[];
   onChange: (next: RevenueStreamDraft[]) => void;
   savedStreams: RevenueStreamWire[];
@@ -1552,7 +1591,7 @@ function RevenueStreamsCard({
                   type="number"
                   inputMode="decimal"
                   step="any"
-                  placeholder="Base-year revenue (actual currency)"
+                  placeholder={`Base-year revenue (actual ${currency})`}
                   value={row.base_year_revenue}
                   onChange={(e) => updateRow(idx, { base_year_revenue: e.target.value })}
                   className="h-9 w-64 text-sm tabular-nums"
@@ -1745,12 +1784,14 @@ function RiskPremiumCard({
 
 
 function PinnedParamsCard({
+  currency,
   drafts,
   onChange,
   savedOverrides,
   onSave,
   saving,
 }: {
+  currency: string;
   drafts: Array<{ key: string; value: string }>;
   onChange: (next: Array<{ key: string; value: string }>) => void;
   savedOverrides: Record<string, number | null>;
@@ -1818,7 +1859,7 @@ function PinnedParamsCard({
         <div className="space-y-2">
           {drafts.map((row, idx) => {
             const param = PINNABLE_BY_KEY[row.key];
-            const unitHint = param?.type === 'percent' ? '%' : param?.type === 'currency' ? "(workpaper unit)" : '';
+            const unitHint = param?.type === 'percent' ? '%' : param?.type === 'currency' ? `${currency} (workpaper unit)` : '';
             const placeholder = param?.type === 'percent' ? 'e.g. 25' : param?.type === 'currency' ? 'e.g. 45000' : 'value';
             return (
               <div key={idx} className="flex items-center gap-2 flex-wrap">
