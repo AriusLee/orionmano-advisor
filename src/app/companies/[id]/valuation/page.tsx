@@ -39,6 +39,7 @@ interface CompanyMeta {
   website: string | null;
   report_tier: string;
   target_valuation: number | null;
+  target_valuation_basis: string | null;
   valuation_date: string | null;
   pinned_overrides: Record<string, number | null> | null;
   pinned_cocos: Record<string, { include?: boolean; selected_for_wacc?: boolean }> | null;
@@ -177,6 +178,10 @@ export default function ValuationPage({ params }: { params: Promise<{ id: string
   const [latest, setLatest] = useState<LatestSummary | null>(null);
   const [targetValuation, setTargetValuation] = useState<string>('');
   const [savedTargetValuation, setSavedTargetValuation] = useState<number | null>(null);
+  // What the target represents: enterprise value (default) or equity value
+  // (after the EV-to-equity bridge + DLOM/DLOC). Saved with the target.
+  const [targetBasis, setTargetBasis] = useState<string>('enterprise_value');
+  const [savedTargetBasis, setSavedTargetBasis] = useState<string>('enterprise_value');
   const [savingTarget, setSavingTarget] = useState(false);
   // Eric 2026-05-08 item 6 — per-run valuation date. Defaults to today; the
   // prefill effect overwrites it with the most recent run's date if present.
@@ -347,16 +352,17 @@ export default function ValuationPage({ params }: { params: Promise<{ id: string
       const tv = targetValuation.trim() ? Number(targetValuation) : null;
       const updated = await apiJson<CompanyMeta>(`/companies/${id}`, {
         method: 'PATCH',
-        body: JSON.stringify({ target_valuation: tv }),
+        body: JSON.stringify({ target_valuation: tv, target_valuation_basis: targetBasis }),
       });
       setSavedTargetValuation(updated.target_valuation ?? null);
+      setSavedTargetBasis(updated.target_valuation_basis ?? 'enterprise_value');
       toast.success(tv == null ? 'Target valuation cleared' : 'Target valuation saved');
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : 'Save failed');
     } finally {
       setSavingTarget(false);
     }
-  }, [id, savingTarget, targetValuation]);
+  }, [id, savingTarget, targetValuation, targetBasis]);
 
   // Seed pinned-cocos draft from the latest run's cocos + saved overrides
   // once both are loaded. After that, the draft is user-controlled.
@@ -547,6 +553,9 @@ export default function ValuationPage({ params }: { params: Promise<{ id: string
         setDocs(d);
         setCompany(c);
         setSavedTargetValuation(c.target_valuation ?? null);
+        const basis = c.target_valuation_basis ?? 'enterprise_value';
+        setSavedTargetBasis(basis);
+        setTargetBasis(basis);
         setSavedValuationDate(c.valuation_date ?? null);
         const pinned = c.pinned_overrides ?? {};
         setSavedPinnedOverrides(pinned);
@@ -704,6 +713,9 @@ export default function ValuationPage({ params }: { params: Promise<{ id: string
       <RunConfigCard
         targetValuation={targetValuation}
         onChange={setTargetValuation}
+        targetBasis={targetBasis}
+        onBasisChange={setTargetBasis}
+        savedBasis={savedTargetBasis}
         valuationDate={valuationDate}
         onValuationDateChange={setValuationDate}
         currencyLabel={
@@ -996,6 +1008,9 @@ function AssumptionsPanel({
 function RunConfigCard({
   targetValuation,
   onChange,
+  targetBasis,
+  onBasisChange,
+  savedBasis,
   valuationDate,
   onValuationDateChange,
   currencyLabel,
@@ -1008,6 +1023,9 @@ function RunConfigCard({
 }: {
   targetValuation: string;
   onChange: (v: string) => void;
+  targetBasis: string;
+  onBasisChange: (v: string) => void;
+  savedBasis: string;
   valuationDate: string;
   onValuationDateChange: (v: string) => void;
   currencyLabel: string;
@@ -1027,7 +1045,8 @@ function RunConfigCard({
   const currentNumeric = trimmed ? Number(trimmed) : null;
   const isDirty =
     (currentNumeric === null && savedValue !== null) ||
-    (currentNumeric !== null && currentNumeric !== savedValue);
+    (currentNumeric !== null && currentNumeric !== savedValue) ||
+    targetBasis !== savedBasis;
   const trimmedDate = valuationDate.trim();
   const currentDate = trimmedDate && /^\d{4}-\d{2}-\d{2}$/.test(trimmedDate) ? trimmedDate : null;
   const savedDateNormalized = savedValuationDate ? savedValuationDate.slice(0, 10) : null;
@@ -1064,6 +1083,15 @@ function RunConfigCard({
             className="h-9 w-52 text-sm tabular-nums"
           />
           <span className="text-[11px] text-muted-foreground/80 font-mono whitespace-nowrap">{currencyCode}</span>
+          <select
+            value={targetBasis}
+            onChange={(e) => onBasisChange(e.target.value)}
+            title="What the target represents — equity value means after the EV-to-equity bridge and DLOM/DLOC"
+            className="h-9 rounded-md border bg-card px-2 text-xs cursor-pointer"
+          >
+            <option value="enterprise_value">Enterprise value</option>
+            <option value="equity_value">Equity value</option>
+          </select>
           <button
             type="button"
             onClick={onSave}
@@ -1883,6 +1911,26 @@ function WorkpaperHeaderCard({
   onReupload: () => void;
 }) {
   const downloadHref = uploadUrl(xlsxUrl);
+  const [makingValuesOnly, setMakingValuesOnly] = useState(false);
+  const handleValuesOnly = async () => {
+    if (makingValuesOnly) return;
+    setMakingValuesOnly(true);
+    try {
+      const res = await apiJson<{ xlsx_url: string; xlsx_filename: string; message: string }>(
+        `/companies/${companyId}/valuation/values-only`,
+        { method: 'POST' },
+      );
+      toast.success('Values-only copy ready — downloading');
+      const a = document.createElement('a');
+      a.href = uploadUrl(res.xlsx_url) ?? res.xlsx_url;
+      a.download = res.xlsx_filename;
+      a.click();
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : 'Values-only export failed');
+    } finally {
+      setMakingValuesOnly(false);
+    }
+  };
   return (
     <div className="space-y-3">
       <div className="flex items-center gap-3">
@@ -1929,6 +1977,17 @@ function WorkpaperHeaderCard({
             Download
           </a>
         )}
+        <button
+          onClick={handleValuesOnly}
+          disabled={makingValuesOnly}
+          title="Export a copy with all formulas converted to hard-coded values and model internals stripped — safe for external circulation"
+          className="inline-flex h-9 items-center justify-center gap-2 rounded-lg border bg-card px-3 text-sm font-medium transition-all duration-150 cursor-pointer hover:bg-muted active:translate-y-px disabled:opacity-60 disabled:cursor-wait"
+        >
+          {makingValuesOnly
+            ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            : <FileSpreadsheet className="h-3.5 w-3.5" strokeWidth={2.25} />}
+          Values-only copy
+        </button>
         {reportId && (
           <a
             href={`/companies/${companyId}/reports/${reportId}`}

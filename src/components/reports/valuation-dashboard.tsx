@@ -751,7 +751,7 @@ function RevenueStreamsBreakdown({
                   </tr>,
                   <tr key={`${s.name}-opex`} className="border-b border-border/30 text-muted-foreground">
                     <td className="py-1 pl-4">
-                      Related opex — {s.name}
+                      Direct expenses — {s.name}
                       {s.opex_is_allocation ? ' (allocated)' : ''}
                     </td>
                     {s.opex.map((v, y) => (
