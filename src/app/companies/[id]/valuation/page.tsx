@@ -690,12 +690,21 @@ export default function ValuationPage({ params }: { params: Promise<{ id: string
         setSavedPinnedOverrides(pinned);
         if (!pinnedInitializedRef.current) {
           // Seed the editable drafts from saved overrides on first load.
+          // MUST use the same conversion as the save path (pinToWire): stored
+          // currency is in workpaper units, the editor shows actual currency.
+          // Seeding raw here while saving divided by the unit multiplier would
+          // shrink every currency pin by 1,000x on each save round-trip.
+          const seedMult = unitMultiplier(
+            (l as LatestSummary | null)?.summary?.currency?.unit ?? "'000"
+          );
           setPinnedDrafts(
             Object.entries(pinned)
               .filter(([k, v]) => v != null && k in PINNABLE_BY_KEY)
               .map(([k, v]) => {
                 const p = PINNABLE_BY_KEY[k];
-                const displayValue = p.type === 'percent' ? String((v as number) * 100) : String(v);
+                const displayValue = String(
+                  Number(pinToEditor(p, v as number, seedMult).toFixed(6))
+                );
                 return { key: k, value: displayValue };
               })
           );
