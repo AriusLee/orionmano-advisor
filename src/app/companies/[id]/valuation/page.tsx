@@ -178,6 +178,36 @@ const PINNABLE_PATHS: Record<string, string> = {
   net_debt_override:             'bridge.net_debt_override',
 };
 
+/**
+ * Workpaper unit -> how many actual currency units one workpaper unit is worth.
+ * Currency pins are TYPED AND DISPLAYED IN ACTUAL CURRENCY (what the analyst
+ * reads off the financial statements) and converted to workpaper units only on
+ * the way to storage. Making the analyst pre-divide by 1,000 is what produced
+ * the Remsea 2026-08-21 pins — revenue_y0 pinned as 1,584,000 in a '000 book.
+ */
+function unitMultiplier(unit: string | null | undefined): number {
+  switch (String(unit ?? '').trim().toLowerCase()) {
+    case "'000": case '000': case 'thousands': return 1_000;
+    case "'mm": case 'mm': case 'millions': return 1_000_000;
+    case "'bn": case 'bn': case 'billions': return 1_000_000_000;
+    default: return 1;
+  }
+}
+
+/** Editor value -> stored value (percent as decimal, currency as workpaper units). */
+function pinToWire(param: PinnableParam, typed: number, unitMult: number): number {
+  if (param.type === 'percent') return typed / 100;
+  if (param.type === 'currency') return typed / unitMult;
+  return typed;
+}
+
+/** Stored value -> editor value (inverse of pinToWire). */
+function pinToEditor(param: PinnableParam, stored: number, unitMult: number): number {
+  if (param.type === 'percent') return stored * 100;
+  if (param.type === 'currency') return stored * unitMult;
+  return stored;
+}
+
 /** Walk a dotted path (numeric segments index into arrays) and return a number. */
 function readPinnablePath(root: unknown, path: string): number | null {
   let node: unknown = root;
@@ -203,6 +233,7 @@ function prefillPinValue(
   key: string,
   savedOverrides: Record<string, number | null>,
   latestInputs: unknown,
+  unitMult: number,
 ): string {
   const param = PINNABLE_BY_KEY[key];
   if (!param) return '';
@@ -211,8 +242,7 @@ function prefillPinValue(
     ? saved
     : readPinnablePath(latestInputs, PINNABLE_PATHS[key] ?? '');
   if (raw == null) return '';
-  const display = param.type === 'percent' ? raw * 100 : raw;
-  return String(Number(display.toFixed(6)));
+  return String(Number(pinToEditor(param, raw, unitMult).toFixed(6)));
 }
 
 interface WorkpaperResult {
@@ -510,6 +540,11 @@ export default function ValuationPage({ params }: { params: Promise<{ id: string
     }
   }, [id, bdpDraft, savingBdp]);
 
+  // Workpaper unit of the latest run — currency pins are entered in actual
+  // currency and divided by this before storage.
+  const pinnedUnitLabel = latest?.summary?.currency?.unit ?? "'000";
+  const pinnedUnitMult = unitMultiplier(pinnedUnitLabel);
+
   const handleSavePinned = useCallback(async () => {
     if (savingPinned) return;
     setSavingPinned(true);
@@ -523,7 +558,7 @@ export default function ValuationPage({ params }: { params: Promise<{ id: string
         if (!param) continue;
         const n = Number(row.value);
         if (!Number.isFinite(n)) continue;
-        wire[row.key] = param.type === 'percent' ? n / 100 : n;
+        wire[row.key] = pinToWire(param, n, pinnedUnitMult);
       }
       const updated = await apiJson<CompanyMeta>(`/companies/${id}`, {
         method: 'PATCH',
@@ -540,7 +575,7 @@ export default function ValuationPage({ params }: { params: Promise<{ id: string
     } finally {
       setSavingPinned(false);
     }
-  }, [id, pinnedDrafts, savingPinned]);
+  }, [id, pinnedDrafts, savingPinned, pinnedUnitMult]);
 
   const handleSaveStreams = useCallback(async () => {
     if (savingStreams) return;
@@ -851,6 +886,8 @@ export default function ValuationPage({ params }: { params: Promise<{ id: string
         onChange={setPinnedDrafts}
         savedOverrides={savedPinnedOverrides}
         latestInputs={latest?.inputs ?? null}
+        unitMult={pinnedUnitMult}
+        unitLabel={pinnedUnitLabel}
         onSave={handleSavePinned}
         saving={savingPinned}
       />
@@ -1871,6 +1908,8 @@ function PinnedParamsCard({
   onChange,
   savedOverrides,
   latestInputs,
+  unitMult,
+  unitLabel,
   onSave,
   saving,
 }: {
@@ -1879,6 +1918,8 @@ function PinnedParamsCard({
   onChange: (next: Array<{ key: string; value: string }>) => void;
   savedOverrides: Record<string, number | null>;
   latestInputs: unknown;
+  unitMult: number;
+  unitLabel: string;
   onSave: () => void;
   saving: boolean;
 }) {
@@ -1891,7 +1932,7 @@ function PinnedParamsCard({
       if (!param) continue;
       const n = Number(row.value);
       if (!Number.isFinite(n)) continue;
-      out[row.key] = param.type === 'percent' ? n / 100 : n;
+      out[row.key] = pinToWire(param, n, unitMult);
     }
     return out;
   })();
@@ -1916,7 +1957,7 @@ function PinnedParamsCard({
     if (!next) return;
     onChange([...drafts, {
       key: next.key,
-      value: prefillPinValue(next.key, savedOverrides, latestInputs),
+      value: prefillPinValue(next.key, savedOverrides, latestInputs, unitMult),
     }]);
   };
   const updateRow = (idx: number, patch: Partial<{ key: string; value: string }>) => {
@@ -1948,12 +1989,23 @@ function PinnedParamsCard({
         <div className="space-y-2">
           {drafts.map((row, idx) => {
             const param = PINNABLE_BY_KEY[row.key];
-            const unitHint = param?.type === 'percent' ? '%' : param?.type === 'currency' ? `${currency} (workpaper unit)` : '';
-            const placeholder = param?.type === 'percent' ? 'e.g. 25' : param?.type === 'currency' ? 'e.g. 45000' : 'value';
+            // Currency pins are entered as ACTUAL amounts (what the accounts
+            // show); the converted workpaper figure is echoed live beside the
+            // field so the analyst can see exactly what gets stored.
+            const unitHint = param?.type === 'percent'
+              ? '%'
+              : param?.type === 'currency' ? `${currency} (actual)` : '';
+            const placeholder = param?.type === 'percent'
+              ? 'e.g. 25'
+              : param?.type === 'currency' ? 'e.g. 858000' : 'value';
+            const typedNum = Number(row.value);
+            const converted = param?.type === 'currency' && row.value.trim() !== '' && Number.isFinite(typedNum)
+              ? `= ${(typedNum / unitMult).toLocaleString(undefined, { maximumFractionDigits: 2 })} ${currency} ${unitLabel}`
+              : '';
             // Provenance: show where a prefilled value came from, so an
             // unreviewed producer estimate is never mistaken for an analyst
             // decision. Saved pins win; otherwise it's the last run's number.
-            const lastRunValue = prefillPinValue(row.key, {}, latestInputs);
+            const lastRunValue = prefillPinValue(row.key, {}, latestInputs, unitMult);
             const isSavedPin = savedOverrides?.[row.key] != null;
             const matchesLastRun = lastRunValue !== '' && row.value.trim() === lastRunValue;
             const provenance = isSavedPin
@@ -1967,7 +2019,7 @@ function PinnedParamsCard({
                   value={row.key}
                   onChange={(e) => updateRow(idx, {
                     key: e.target.value,
-                    value: prefillPinValue(e.target.value, savedOverrides, latestInputs),
+                    value: prefillPinValue(e.target.value, savedOverrides, latestInputs, unitMult),
                   })}
                   className="h-9 w-64 rounded-md border bg-card px-2 text-xs cursor-pointer"
                 >
@@ -1987,6 +2039,9 @@ function PinnedParamsCard({
                   className="h-9 w-32 text-sm tabular-nums"
                 />
                 <span className="text-[11px] text-muted-foreground/70 font-mono">{unitHint}</span>
+                {converted && (
+                  <span className="text-[11px] text-muted-foreground/60 font-mono tabular-nums">{converted}</span>
+                )}
                 {provenance && (
                   <span className="text-[11px] text-amber-600 dark:text-amber-500">{provenance}</span>
                 )}
