@@ -130,9 +130,90 @@ const PINNABLE_PARAMS: PinnableParam[] = [
   { key: 'dloc_pct',                    label: 'DLOC',                        type: 'percent',  section: 'Bridge' },
   { key: 'shares_outstanding',          label: 'Shares outstanding (basic)', type: 'number',   section: 'Bridge' },
   { key: 'shares_outstanding_diluted',  label: 'Shares outstanding (diluted)', type: 'number', section: 'Bridge' },
+  { key: 'net_debt_override',           label: 'Net debt (negative = net cash)', type: 'currency', section: 'Bridge' },
 ];
 const PINNABLE_BY_KEY: Record<string, PinnableParam> =
   PINNABLE_PARAMS.reduce((acc, p) => ({ ...acc, [p.key]: p }), {});
+
+// Dotted path of each pinnable key inside the producer's inputs payload.
+// Mirrors backend PINNABLE_PARAMS — used to prefill a new pin with whatever
+// the last run actually produced, so the analyst reviews a real number instead
+// of typing into an empty box.
+const PINNABLE_PATHS: Record<string, string> = {
+  revenue_y0:                    'projections.revenue_y0',
+  gross_profit_y0:               'projections.gross_profit_y0',
+  opex_y0:                       'projections.opex_y0',
+  ebitda_y0:                     'projections.ebitda_y0',
+  ebit_y0:                       'projections.ebit_y0',
+  tax_y0:                        'projections.tax_y0',
+  net_income_y0:                 'projections.net_income_y0',
+  revenue_growth_y1:             'projections.revenue_growth.0',
+  revenue_growth_y2:             'projections.revenue_growth.1',
+  revenue_growth_y3:             'projections.revenue_growth.2',
+  revenue_growth_y4:             'projections.revenue_growth.3',
+  revenue_growth_y5:             'projections.revenue_growth.4',
+  revenue_growth_primary_y1:     'projections.revenue_growth_primary.0',
+  revenue_growth_primary_y2:     'projections.revenue_growth_primary.1',
+  revenue_growth_primary_y3:     'projections.revenue_growth_primary.2',
+  revenue_growth_primary_y4:     'projections.revenue_growth_primary.3',
+  revenue_growth_primary_y5:     'projections.revenue_growth_primary.4',
+  gross_margin_y1:               'projections.gross_margin.0',
+  gross_margin_y2:               'projections.gross_margin.1',
+  gross_margin_y3:               'projections.gross_margin.2',
+  gross_margin_y4:               'projections.gross_margin.3',
+  gross_margin_y5:               'projections.gross_margin.4',
+  terminal_growth_rate:          'terminal.growth_rate',
+  nominal_gdp_growth:            'terminal.nominal_gdp_growth',
+  risk_free_rate:                'wacc.shared.risk_free_rate',
+  equity_risk_premium:           'wacc.shared.equity_risk_premium',
+  country_risk_premium:          'wacc.shared.country_risk_premium',
+  unlevered_beta_pm:             'wacc.per_management.unlevered_beta',
+  size_premium_pm:               'wacc.per_management.size_premium',
+  specific_risk_premium_pm:      'wacc.per_management.specific_risk_premium',
+  pretax_cost_of_debt_pm:        'wacc.per_management.pretax_cost_of_debt',
+  dlom_pct:                      'bridge.dlom_pct',
+  dloc_pct:                      'bridge.dloc_pct',
+  shares_outstanding:            'bridge.shares_outstanding',
+  shares_outstanding_diluted:    'bridge.shares_outstanding_diluted',
+  net_debt_override:             'bridge.net_debt_override',
+};
+
+/** Walk a dotted path (numeric segments index into arrays) and return a number. */
+function readPinnablePath(root: unknown, path: string): number | null {
+  let node: unknown = root;
+  for (const part of path.split('.')) {
+    if (node == null) return null;
+    if (/^\d+$/.test(part)) {
+      if (!Array.isArray(node)) return null;
+      node = node[Number(part)];
+    } else {
+      if (typeof node !== 'object' || Array.isArray(node)) return null;
+      node = (node as Record<string, unknown>)[part];
+    }
+  }
+  return typeof node === 'number' && Number.isFinite(node) ? node : null;
+}
+
+/**
+ * Value to prefill a pin row with, as the string the input expects.
+ * Prefers an existing saved pin, else the last run's produced value.
+ * Percent params are stored as decimals but edited as whole percents.
+ */
+function prefillPinValue(
+  key: string,
+  savedOverrides: Record<string, number | null>,
+  latestInputs: unknown,
+): string {
+  const param = PINNABLE_BY_KEY[key];
+  if (!param) return '';
+  const saved = savedOverrides?.[key];
+  const raw = saved != null
+    ? saved
+    : readPinnablePath(latestInputs, PINNABLE_PATHS[key] ?? '');
+  if (raw == null) return '';
+  const display = param.type === 'percent' ? raw * 100 : raw;
+  return String(Number(display.toFixed(6)));
+}
 
 interface WorkpaperResult {
   status: 'success' | 'partial' | 'failed';
@@ -769,6 +850,7 @@ export default function ValuationPage({ params }: { params: Promise<{ id: string
         drafts={pinnedDrafts}
         onChange={setPinnedDrafts}
         savedOverrides={savedPinnedOverrides}
+        latestInputs={latest?.inputs ?? null}
         onSave={handleSavePinned}
         saving={savingPinned}
       />
@@ -1788,6 +1870,7 @@ function PinnedParamsCard({
   drafts,
   onChange,
   savedOverrides,
+  latestInputs,
   onSave,
   saving,
 }: {
@@ -1795,6 +1878,7 @@ function PinnedParamsCard({
   drafts: Array<{ key: string; value: string }>;
   onChange: (next: Array<{ key: string; value: string }>) => void;
   savedOverrides: Record<string, number | null>;
+  latestInputs: unknown;
   onSave: () => void;
   saving: boolean;
 }) {
@@ -1825,10 +1909,15 @@ function PinnedParamsCard({
   })();
   const usedKeys = new Set(drafts.map(r => r.key).filter(Boolean));
   const addRow = () => {
-    // Pick the first param key that isn't already in the drafts.
+    // Pick the first param key that isn't already in the drafts, and prefill it
+    // with the last run's produced value so the analyst edits a real number
+    // rather than typing blind.
     const next = PINNABLE_PARAMS.find(p => !usedKeys.has(p.key));
     if (!next) return;
-    onChange([...drafts, { key: next.key, value: '' }]);
+    onChange([...drafts, {
+      key: next.key,
+      value: prefillPinValue(next.key, savedOverrides, latestInputs),
+    }]);
   };
   const updateRow = (idx: number, patch: Partial<{ key: string; value: string }>) => {
     onChange(drafts.map((r, i) => i === idx ? { ...r, ...patch } : r));
@@ -1861,11 +1950,25 @@ function PinnedParamsCard({
             const param = PINNABLE_BY_KEY[row.key];
             const unitHint = param?.type === 'percent' ? '%' : param?.type === 'currency' ? `${currency} (workpaper unit)` : '';
             const placeholder = param?.type === 'percent' ? 'e.g. 25' : param?.type === 'currency' ? 'e.g. 45000' : 'value';
+            // Provenance: show where a prefilled value came from, so an
+            // unreviewed producer estimate is never mistaken for an analyst
+            // decision. Saved pins win; otherwise it's the last run's number.
+            const lastRunValue = prefillPinValue(row.key, {}, latestInputs);
+            const isSavedPin = savedOverrides?.[row.key] != null;
+            const matchesLastRun = lastRunValue !== '' && row.value.trim() === lastRunValue;
+            const provenance = isSavedPin
+              ? ''
+              : matchesLastRun
+                ? 'from last run — review before pinning'
+                : '';
             return (
               <div key={idx} className="flex items-center gap-2 flex-wrap">
                 <select
                   value={row.key}
-                  onChange={(e) => updateRow(idx, { key: e.target.value, value: '' })}
+                  onChange={(e) => updateRow(idx, {
+                    key: e.target.value,
+                    value: prefillPinValue(e.target.value, savedOverrides, latestInputs),
+                  })}
                   className="h-9 w-64 rounded-md border bg-card px-2 text-xs cursor-pointer"
                 >
                   {PINNABLE_PARAMS.map(p => (
@@ -1884,6 +1987,9 @@ function PinnedParamsCard({
                   className="h-9 w-32 text-sm tabular-nums"
                 />
                 <span className="text-[11px] text-muted-foreground/70 font-mono">{unitHint}</span>
+                {provenance && (
+                  <span className="text-[11px] text-amber-600 dark:text-amber-500">{provenance}</span>
+                )}
                 <button
                   type="button"
                   onClick={() => removeRow(idx)}
