@@ -25,6 +25,8 @@ import { GeneratingState } from '@/components/generating-state';
 import { ValuationDashboard, type ValuationSummary } from '@/components/reports/valuation-dashboard';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import Link from 'next/link';
+import { ValuationNav } from '@/components/valuation/valuation-nav';
 
 interface Document {
   id: string;
@@ -265,6 +267,9 @@ interface LatestSummary {
   summary: ValuationSummary;
   inputs?: Record<string, unknown>;
   report_id?: string | null;
+  // Eric 2026-10 — valuation versions.
+  version_no?: number | null;
+  note?: string | null;
 }
 
 const REQUIRED_DOCS = ['audit_report', 'projections'];
@@ -394,6 +399,7 @@ export default function ValuationPage({ params }: { params: Promise<{ id: string
         summary?: ValuationSummary | null;
         parsed_inputs?: Record<string, unknown>;
         report_id?: string | null;
+        version_no?: number | null;
       };
       let res: RegenerateResponse;
       let parsedForLatest: Record<string, unknown> | undefined;
@@ -446,6 +452,7 @@ export default function ValuationPage({ params }: { params: Promise<{ id: string
           summary: res.summary,
           inputs: parsedForLatest,
           report_id: res.report_id ?? null,
+          version_no: res.version_no ?? null,
         });
       }
       if (status === 'success') {
@@ -761,6 +768,7 @@ export default function ValuationPage({ params }: { params: Promise<{ id: string
         errors: string[];
         summary?: ValuationSummary | null;
         report_id?: string | null;
+        version_no?: number | null;
       }>(`/companies/${id}/valuation/generate-workpaper`, {
         method: 'POST',
         body: JSON.stringify({
@@ -798,6 +806,7 @@ export default function ValuationPage({ params }: { params: Promise<{ id: string
           errors: res.errors ?? [],
           summary: res.summary,
           report_id: res.report_id ?? null,
+          version_no: res.version_no ?? null,
         });
       }
 
@@ -844,9 +853,19 @@ export default function ValuationPage({ params }: { params: Promise<{ id: string
           <h1 className="text-3xl font-semibold tracking-tight leading-none">Valuation</h1>
           <p className="mt-1.5 text-sm text-muted-foreground">
             DCF + Comparable-companies workpaper — exported as a populated Excel template
+            {latest?.version_no != null && (
+              <>
+                {' · '}
+                <Link href={`/companies/${id}/valuation/versions`} className="font-mono text-foreground hover:underline cursor-pointer">
+                  v{latest.version_no}
+                </Link>
+                {latest.note ? <span className="text-muted-foreground"> — {latest.note}</span> : null}
+              </>
+            )}
           </p>
         </div>
       </div>
+      <ValuationNav companyId={id} />
 
       <RunConfigCard
         targetValuation={targetValuation}

@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Upload, FileText, Loader2, CheckCircle, XCircle, Trash2 } from "lucide-react";
 import { toast } from "sonner";
+import { PeriodPicker } from "@/components/documents/period-picker";
 
 interface Document {
   id: string;
@@ -15,6 +16,7 @@ interface Document {
   category: string | null;
   extraction_status: string;
   extracted_data: Record<string, unknown> | null;
+  target_period?: string | null;
   created_at: string;
 }
 
@@ -30,6 +32,7 @@ export default function DocumentsPage({ params }: { params: Promise<{ id: string
   const [docs, setDocs] = useState<Document[]>([]);
   const [uploading, setUploading] = useState(false);
   const [dragOver, setDragOver] = useState(false);
+  const [targetPeriod, setTargetPeriod] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
 
   const loadDocs = useCallback(() => {
@@ -48,6 +51,7 @@ export default function DocumentsPage({ params }: { params: Promise<{ id: string
       const formData = new FormData();
       formData.append("file", file);
       formData.append("category", "other");
+      if (targetPeriod.trim()) formData.append("target_period", targetPeriod.trim());
       await apiFetch(`/companies/${id}/documents/upload`, {
         method: "POST",
         body: formData,
@@ -102,6 +106,7 @@ export default function DocumentsPage({ params }: { params: Promise<{ id: string
         <Upload className="mb-4 h-10 w-10 text-muted-foreground" />
         <p className="font-medium">{uploading ? "Uploading..." : "Drop files here or click to browse"}</p>
         <p className="mt-1 text-sm text-muted-foreground">PDF, Word, Excel, images — AI will auto-extract data</p>
+        <PeriodPicker companyId={id} value={targetPeriod} onChange={setTargetPeriod} className="mt-4" />
         <input
           ref={inputRef}
           type="file"
@@ -130,6 +135,7 @@ export default function DocumentsPage({ params }: { params: Promise<{ id: string
                       <p className="font-medium">{doc.filename}</p>
                       <p className="text-xs text-muted-foreground">
                         {formatSize(doc.file_size)} · {new Date(doc.created_at).toLocaleDateString()}
+                        {doc.target_period ? ` · for ${doc.target_period}` : ""}
                       </p>
                     </div>
                   </div>

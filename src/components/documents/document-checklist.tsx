@@ -29,6 +29,7 @@ import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { Sparkles, RefreshCw } from 'lucide-react';
 import { DocumentViewerModal } from './document-viewer-modal';
+import { PeriodPicker } from './period-picker';
 
 interface Doc {
   id: string;
@@ -38,6 +39,7 @@ interface Doc {
   categories?: string[] | null;
   mime_type?: string | null;
   extracted_data?: Record<string, unknown> | null;
+  target_period?: string | null;
 }
 
 interface DocumentChecklistProps {
@@ -84,6 +86,8 @@ export function DocumentChecklist({ companyId, documents, onChanged, companyWebs
   const [reextractingAll, setReextractingAll] = useState(false);
   const [reextractingId, setReextractingId] = useState<string | null>(null);
   const [viewerDoc, setViewerDoc] = useState<Doc | null>(null);
+  // Eric 2026-10 — optional period the next uploads are FOR.
+  const [targetPeriod, setTargetPeriod] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
 
   const handleReclassify = async () => {
@@ -114,6 +118,7 @@ export function DocumentChecklist({ companyId, documents, onChanged, companyWebs
       const formData = new FormData();
       formData.append('file', file);
       formData.append('category', 'other');
+      if (targetPeriod.trim()) formData.append('target_period', targetPeriod.trim());
       await apiFetch(`/companies/${companyId}/documents/upload`, {
         method: 'POST',
         body: formData,
@@ -268,6 +273,12 @@ export function DocumentChecklist({ companyId, documents, onChanged, companyWebs
         <p className="mt-0.5 text-[11px] text-muted-foreground">
           AI will auto-detect each document type
         </p>
+        <PeriodPicker
+          companyId={companyId}
+          value={targetPeriod}
+          onChange={setTargetPeriod}
+          className="mt-3"
+        />
         <input
           ref={inputRef}
           type="file"

@@ -72,6 +72,9 @@ interface Report {
   // DRS Industry Section chapter preamble (OM Assurance / OM Report
   // disclosure). Computed server-side, only populated for industry_drs.
   disclosure_preamble?: string | null;
+  // Valuation reports (Eric 2026-10): the version they explain + flavour.
+  valuation_version_id?: string | null;
+  variant?: string | null;
 }
 
 const STATUS_META: Record<string, { label: string; dot: string; text: string; ring: string }> = {
@@ -461,6 +464,15 @@ export default function ReportDetailPage({
             <p className="mt-1 text-xs text-muted-foreground">
               {report.sections.length} section{report.sections.length === 1 ? "" : "s"} ·{" "}
               {report.sections.filter((s) => s.is_ai_generated).length} AI-generated
+              {report.report_type === "valuation_report" && report.valuation_version_id && (
+                <>
+                  {" · "}
+                  <a href={`/companies/${id}/valuation/versions`} className="text-primary hover:underline cursor-pointer">
+                    explains a specific valuation version
+                  </a>
+                </>
+              )}
+              {report.variant === "market_supported" && " · assumptions checked against live market data"}
             </p>
           </div>
         </div>
