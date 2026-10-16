@@ -54,6 +54,8 @@ interface Cell {
   source_document_id: string | null;
   source_document_name: string | null;
   source_page: string | null;
+  source_basis: string | null;
+  review_note: string | null;
   origin: string;
   updated_at: string | null;
 }
@@ -115,7 +117,8 @@ interface FinancialsData {
 function sourceText(c: Cell): string {
   const page = c.source_page ? (/^\d+$/.test(c.source_page) ? `p. ${c.source_page}` : c.source_page) : null;
   const doc = c.source_document_name ?? (c.origin === 'manual' ? 'Entered by analyst' : 'Source document removed');
-  return [doc, page].filter(Boolean).join(', ');
+  const basis = c.origin === 'manual' ? null : c.source_basis;
+  return [doc, page, basis].filter(Boolean).join(', ');
 }
 
 function unitText(currency: string | null, unit: string | null): string {
@@ -185,6 +188,16 @@ export default function HistoricalFiguresPage({ params }: { params: Promise<{ id
   };
 
   const periods = data?.periods ?? [];
+  const toReview = useMemo(
+    () =>
+      (data?.rows ?? []).flatMap((r) =>
+        (data?.periods ?? []).flatMap((p) => {
+          const c = r.values[p.label];
+          return c?.review_note ? [{ row: r, period: p, note: c.review_note }] : [];
+        }),
+      ),
+    [data],
+  );
   const rowsByStatement = useMemo(() => {
     const out: Record<string, Row[]> = {};
     for (const r of data?.rows ?? []) {
@@ -232,6 +245,29 @@ export default function HistoricalFiguresPage({ params }: { params: Promise<{ id
         </Card>
       ) : (
         <>
+          {toReview.length > 0 && (
+            <Card className="gap-3 px-4 ring-orange-500/30">
+              <div className="flex items-center gap-2 text-sm font-medium text-orange-400">
+                <AlertTriangle className="h-4 w-4" />
+                {toReview.length} figure{toReview.length === 1 ? '' : 's'} need{toReview.length === 1 ? 's' : ''} review — unclear, or a subtotal doesn&apos;t add up
+              </div>
+              <ul className="space-y-2">
+                {toReview.map(({ row, period, note }) => (
+                  <li key={`${row.key}-${period.id}`} className="flex flex-wrap items-center gap-3 rounded-lg bg-muted/30 px-3 py-2 text-xs">
+                    <span className="font-medium">{period.label} · {row.label.trim()}</span>
+                    <span className="min-w-0 flex-1 text-muted-foreground">{note}</span>
+                    <Button size="xs" variant="outline" onClick={() => setEditing({ period, row })} className="cursor-pointer">
+                      Check figure
+                    </Button>
+                  </li>
+                ))}
+              </ul>
+              <p className="text-[11px] text-muted-foreground">
+                The figure is kept as the document prints it. Correct it (with a reason) or confirm it as is; either clears the flag.
+              </p>
+            </Card>
+          )}
+
           {data.discrepancies.length > 0 && (
             <Card className="gap-3 border-amber-500/30 px-4 ring-amber-500/30">
               <div className="flex items-center gap-2 text-sm font-medium text-amber-400">
@@ -245,6 +281,9 @@ export default function HistoricalFiguresPage({ params }: { params: Promise<{ id
                     <span className="text-muted-foreground">
                       held <span className="font-mono text-foreground">{fmtNumber(d.current_value)}</span> {unitText(d.current_currency, d.current_unit)}
                       {' '}vs <span className="font-mono text-foreground">{fmtNumber(d.document_value)}</span> {unitText(d.document_currency, d.document_unit)}
+                      {d.current_value != null && d.document_value != null && (
+                        <> (difference <span className="font-mono text-foreground">{fmtNumber(d.document_value - d.current_value)}</span>)</>
+                      )}
                       {' '}in {d.document_name ?? 'a document'}{d.source_page ? `, p. ${d.source_page}` : ''}
                     </span>
                     <Badge variant={d.kind === 'comparative' ? 'neutral' : 'warning'}>
@@ -331,17 +370,26 @@ export default function HistoricalFiguresPage({ params }: { params: Promise<{ id
                               <button
                                 type="button"
                                 onClick={() => setEditing({ period: p, row: r })}
-                                title={c ? `Source: ${sourceText(c)}${c.origin === 'manual' ? ' (entered by hand)' : ''}` : 'Add a figure'}
+                                title={c ? `Source: ${sourceText(c)}${c.origin === 'manual' ? ' (entered by hand)' : ''}${c.review_note ? `\nNeeds review: ${c.review_note}` : ''}` : 'Add a figure'}
                                 className={cn(
                                   'w-full rounded px-1.5 py-0.5 text-right font-mono tabular-nums cursor-pointer hover:bg-muted/40',
                                   !c && 'text-muted-foreground/30',
                                   p.locked && 'text-amber-100',
+                                  c?.review_note && 'bg-orange-500/10 ring-1 ring-inset ring-orange-500/40',
                                 )}
                               >
                                 {c ? fmtNumber(c.value, Math.abs(c.value ?? 0) < 100 && c.value !== Math.round(c.value ?? 0) ? 2 : 0) : '·'}
                                 {c && (
                                   <span className="block truncate text-[9.5px] font-sans text-muted-foreground/70">
-                                    {c.origin === 'manual' ? 'manual' : c.source_page ? (/^\d+$/.test(c.source_page) ? `p. ${c.source_page}` : c.source_page) : (c.source_document_name ?? '').slice(0, 18)}
+                                    {c.review_note ? (
+                                      <span className="text-orange-400">needs review</span>
+                                    ) : c.origin === 'manual' ? (
+                                      'manual'
+                                    ) : c.source_page ? (
+                                      /^\d+$/.test(c.source_page) ? `p. ${c.source_page}` : c.source_page
+                                    ) : (
+                                      (c.source_document_name ?? '').slice(0, 18)
+                                    )}
                                   </span>
                                 )}
                               </button>
@@ -541,6 +589,7 @@ function EditFigureDialog({
             {cell ? (
               <>
                 Currently {fmtNumber(cell.value, 2)} {unitText(cell.currency, cell.unit)} — from {sourceText(cell)}.
+                {cell.review_note && <span className="mt-1 block text-orange-400">Needs review: {cell.review_note}</span>}
               </>
             ) : (
               'No figure yet for this line and period.'

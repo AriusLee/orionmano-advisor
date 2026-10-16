@@ -35,20 +35,10 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { ImpactSummary, type Impact } from '@/components/valuation/impact-summary';
 import { ValuationNav, ValuationPageHeader } from '@/components/valuation/valuation-nav';
 import { MARKDOWN_COMPONENTS } from '@/components/reports/section-preview';
-import { changeTone, fmtDate, fmtMoney, fmtPct } from '@/lib/valuation-format';
-
-interface Impact {
-  ev_before: number | null;
-  ev_after: number | null;
-  equity_before: number | null;
-  equity_after: number | null;
-  ev_change_pct: number | null;
-  equity_change_pct: number | null;
-  currency: string | null;
-  unit: string | null;
-}
+import { fmtDate } from '@/lib/valuation-format';
 
 interface Change {
   id: string;
@@ -105,8 +95,8 @@ interface Param {
 
 const STATUS: Record<string, { label: string; variant: 'neutral' | 'info' | 'warning' | 'success' | 'danger' }> = {
   pending: { label: 'Drafting…', variant: 'neutral' },
-  answered: { label: 'No model change', variant: 'info' },
-  change_proposed: { label: 'Model change proposed', variant: 'warning' },
+  answered: { label: 'No change required', variant: 'info' },
+  change_proposed: { label: 'Change pending your approval', variant: 'warning' },
   applying: { label: 'Applying…', variant: 'neutral' },
   applied: { label: 'Applied', variant: 'success' },
   failed: { label: 'Failed', variant: 'danger' },
@@ -299,7 +289,6 @@ export default function CounterpartyQaPage({ params }: { params: Promise<{ id: s
                   companyId={id}
                   batchId={batch.id}
                   item={item}
-                  currency={batch.currency}
                   unit={batch.unit}
                   params={paramsList}
                   batchBusy={batch.status === 'answering'}
@@ -333,7 +322,6 @@ function QaItemCard({
   companyId,
   batchId,
   item,
-  currency,
   unit,
   params,
   batchBusy,
@@ -342,7 +330,6 @@ function QaItemCard({
   companyId: string;
   batchId: string;
   item: Item;
-  currency: string | null;
   unit: string | null;
   params: Param[];
   batchBusy: boolean;
@@ -479,7 +466,7 @@ function QaItemCard({
             <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Proposed model changes</p>
           )}
           {item.changes.map((c) => (
-            <ChangeRow key={c.id} companyId={companyId} change={c} currency={currency} unit={unit} locked={locked} onChanged={onChanged} />
+            <ChangeRow key={c.id} companyId={companyId} change={c} unit={unit} locked={locked} onChanged={onChanged} />
           ))}
           {adding && <AddChangeRow companyId={companyId} itemId={item.id} params={params} onDone={() => { setAdding(false); onChanged(); }} />}
         </div>
@@ -487,11 +474,8 @@ function QaItemCard({
 
       {combined && !locked && (
         <div className="rounded-lg bg-muted/30 px-4 py-2.5 text-xs">
-          <span className="text-muted-foreground">Approved changes together, on the current model: </span>
-          EV {fmtMoney(combined.ev_before)} → <span className="font-mono">{fmtMoney(combined.ev_after, combined.currency, combined.unit)}</span>{' '}
-          <span className={changeTone(combined.ev_change_pct)}>({fmtPct(combined.ev_change_pct, 1, true)})</span>
-          {' · '}Equity {fmtMoney(combined.equity_before)} → <span className="font-mono">{fmtMoney(combined.equity_after)}</span>{' '}
-          <span className={changeTone(combined.equity_change_pct)}>({fmtPct(combined.equity_change_pct, 1, true)})</span>
+          <p className="mb-0.5 text-muted-foreground">Approved changes together, on the current model:</p>
+          <ImpactSummary impact={combined} />
         </div>
       )}
 
@@ -533,14 +517,12 @@ function QaItemCard({
 function ChangeRow({
   companyId,
   change,
-  currency,
   unit,
   locked,
   onChanged,
 }: {
   companyId: string;
   change: Change;
-  currency: string | null;
   unit: string | null;
   locked: boolean;
   onChanged: () => void;
@@ -579,13 +561,7 @@ function ChangeRow({
           <span className="font-mono">{change.new_display}</span>
         </p>
         {change.rationale && <p className="mt-0.5 text-xs text-muted-foreground">{change.rationale}</p>}
-        {imp && (
-          <p className="mt-1 text-xs">
-            EV <span className={cn('font-mono', changeTone(imp.ev_change_pct))}>{fmtPct(imp.ev_change_pct, 1, true)}</span>
-            <span className="text-muted-foreground"> ({fmtMoney(imp.ev_before)} → {fmtMoney(imp.ev_after, currency, unit)})</span>
-            {' · '}Equity <span className={cn('font-mono', changeTone(imp.equity_change_pct))}>{fmtPct(imp.equity_change_pct, 1, true)}</span>
-          </p>
-        )}
+        {imp && <ImpactSummary impact={imp} className="mt-1" />}
       </div>
       {!locked && (
         <div className="flex items-center gap-1.5">

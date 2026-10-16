@@ -11,6 +11,7 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { ValuationNav, ValuationPageHeader } from '@/components/valuation/valuation-nav';
 import { fmtDate } from '@/lib/valuation-format';
+import { ImpactSummary, type Impact } from '@/components/valuation/impact-summary';
 
 interface Source {
   url: string;
@@ -28,6 +29,9 @@ interface EvidenceRow {
   assessment: string;
   market_range: string | null;
   finding: string | null;
+  suggested_display: string | null;
+  suggested_basis: string | null;
+  suggested_impact: Impact | null;
   sources: Source[];
   searched_at: string | null;
   error: string | null;
@@ -273,6 +277,24 @@ export default function MarketDataPage({ params }: { params: Promise<{ id: strin
                       </p>
                     )}
                     {r.finding && <p className="text-sm text-muted-foreground">{r.finding}</p>}
+                    {r.suggested_display && (
+                      <div className="rounded-md bg-muted/30 px-3 py-2 text-xs">
+                        <p>
+                          <span className="text-muted-foreground">Suggested by the evidence: </span>
+                          <span className="font-mono">{r.value_display}</span> →{' '}
+                          <span className="font-mono font-medium">{r.suggested_display}</span>
+                          <span className="text-muted-foreground"> · not applied to the model</span>
+                        </p>
+                        {r.suggested_basis && <p className="mt-0.5 text-muted-foreground">{r.suggested_basis}</p>}
+                        {r.suggested_impact?.ev_after != null ? (
+                          <ImpactSummary impact={r.suggested_impact} className="mt-1" />
+                        ) : (
+                          <p className="mt-1 text-muted-foreground">
+                            Valuation impact not computed — this figure is derived in the model, so it changes through its inputs.
+                          </p>
+                        )}
+                      </div>
+                    )}
                     {r.error && <p className="text-xs text-red-400">{r.error}</p>}
                     {r.sources.length > 0 && (
                       <ul className="mt-1 space-y-1 border-t border-border/40 pt-2">
