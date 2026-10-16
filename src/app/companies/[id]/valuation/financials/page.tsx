@@ -265,7 +265,7 @@ export default function HistoricalFiguresPage({ params }: { params: Promise<{ id
           )}
 
           <Card className="gap-0 overflow-x-auto py-0">
-            <table className="w-full min-w-[720px] text-sm">
+            <table className="w-full text-sm" style={{ minWidth: `${13 + periods.length * 9.5}rem` }}>
               <thead>
                 <tr className="border-b border-border/60">
                   <th className="sticky left-0 z-10 bg-card px-4 py-3 text-left text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
