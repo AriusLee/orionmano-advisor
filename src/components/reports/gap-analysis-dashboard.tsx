@@ -95,15 +95,32 @@ function truncate(text: string, maxLen: number): string {
 function parseOverallReadiness(content: string) {
   const result = { rating: '', timeEstimate: '', totalCost: '', recommendation: '' };
   const lines = content.split('\n');
+  const clean = (s: string) =>
+    s.replace(/\*\*/g, '').trim().replace(/^#+\s*/, '').replace(/^(\d+\.|[-*])\s+/, '').trim();
 
-  for (const line of lines) {
-    const lower = line.toLowerCase();
-    const value = line.split(':').slice(1).join(':').replace(/\*\*/g, '').trim();
-    if (lower.includes('overall readiness rating') || lower.includes('overall readiness:')) result.rating = truncate(value, 40);
-    else if (lower.includes('estimated time') || lower.includes('time to ipo')) result.timeEstimate = truncate(value, 40);
-    else if (lower.includes('estimated total') || lower.includes('total remediation') || lower.includes('total estimated')) result.totalCost = truncate(value, 30);
-    else if (lower.includes('go/no-go') || (lower.includes('recommendation') && !lower.includes('strategic'))) result.recommendation = truncate(value, 60);
-  }
+  // The model writes these as "Label: value", as a "| Label | value |" table
+  // row, or as a heading with the value on the next line. Accept all three;
+  // the first non-empty value wins so later prose can't overwrite it.
+  const valueAt = (i: number): string => {
+    const line = lines[i];
+    if (line.includes('|')) {
+      const cells = line.split('|').map(c => c.trim()).filter(Boolean);
+      if (cells.length >= 2) return clean(cells[1]);
+    }
+    const afterColon = clean(line.split(':').slice(1).join(':'));
+    if (afterColon) return afterColon;
+    const next = lines.slice(i + 1).find(l => l.trim());
+    return next ? clean(next) : '';
+  };
+
+  lines.forEach((line, i) => {
+    // In a table row only the first cell is the label; ignore mentions elsewhere.
+    const lower = (line.includes('|') ? line.split('|').map(c => c.trim()).filter(Boolean)[0] ?? '' : line).toLowerCase();
+    if (!result.rating && (lower.includes('overall readiness rating') || lower.includes('overall readiness:'))) result.rating = truncate(valueAt(i), 40);
+    else if (!result.timeEstimate && (lower.includes('estimated time') || lower.includes('time to ipo'))) result.timeEstimate = truncate(valueAt(i), 40);
+    else if (!result.totalCost && (lower.includes('estimated total') || lower.includes('total remediation') || lower.includes('total estimated'))) result.totalCost = truncate(valueAt(i), 30);
+    else if (!result.recommendation && (lower.includes('go/no-go') || (lower.includes('recommendation') && !lower.includes('strategic')))) result.recommendation = truncate(valueAt(i), 60);
+  });
 
   return result;
 }
